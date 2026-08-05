@@ -56,7 +56,16 @@
      centre. Base + knob are positioned in JS and hidden until touched. */
   .tp-joyzone{
     position:relative; width:120px; height:120px; touch-action:none;
-    flex-shrink:0;
+    flex-shrink:0; overflow:hidden;
+    background:rgba(255,255,255,.42);
+    border:1px dashed rgba(108,92,231,.42); border-radius:14px;
+    box-shadow:inset 0 0 0 3px rgba(255,255,255,.28);
+  }
+  .tp-joyzone::before{
+    content:'MOVER · TOCA Y ARRASTRA'; position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    padding:14px; color:rgba(43,43,52,.42); font-size:9px; line-height:1.5;
+    pointer-events:none;
   }
   .tp-joybase, .tp-joyknob{
     position:absolute; border-radius:50%; opacity:0; pointer-events:none;
@@ -322,7 +331,7 @@ const PEOPLE = [
     tx:13, ty:20, kind:'sit', face:'down',
     spec:{ sk:'med', hs:'long', hc:'silver', fh:'none', gl:0, top:'#3c4258', bot:'#3c4258', sh:'#23232b', st:'dress', bd:0, tl:-1 },
     lines:['DÁMELO-DÁMELO-DÁMELO.',
-           'SIETE FIRMAS, PLANTAS, RENDERS. PERFECTO.\nYO ENTRO, TÚ RESPIRAS.',
+           'SEIS FIRMAS, LÁMINAS IMPRESAS, RENDERS. PERFECTO.\nYO ENTRO, TÚ RESPIRAS.',
            '¡COMENZAMOS!'],
     chat:'RÁPIDO, RÁPIDO. LA IDEA SE ENFRÍA.' },
 
@@ -412,15 +421,29 @@ const PEOPLE = [
 
 // ---------- SIGN-OFF CHAIN ----------
 const CHAIN = [
-  { id:'gaviota',  task:'HAZ TU DAILY CON GAVIOTA',            where:'TALLER' },
-  { id:'hector',   task:'REVISIÓN TÉCNICA CON HÉCTOR',         where:'TALLER' },
-  { id:'camilo',   task:'REVISIÓN DE LEAD CON CAMILO',         where:'TALLER' },
-  { id:'crismery', task:'CONFIRMACIÓN DE INICIO CON CRISMERY', where:'ADMIN' },
-  { id:'laura',    task:'APROBACIÓN DE PLANTAS CON LAURA',     where:'CO-PRINCIPAL' },
-  { id:'juan',     task:'APROBACIÓN DE FACHADA CON JUAN RAÚL', where:'COO' },
-  { id:'gerardo',  task:'FIRMA FINAL CON GERARDO',             where:'CEO' },
-  { id:'marielmi', task:'ENTREGA EL JUEGO EN CONFERENCIAS',    where:'CONFERENCIAS' },
+  { id:'gaviota',  sig:0, task:'HAZ TU DAILY CON GAVIOTA',            where:'TALLER' },
+  { id:'hector',   sig:1, task:'REVISIÓN TÉCNICA CON HÉCTOR',         where:'TALLER' },
+  { id:'camilo',   sig:2, task:'REVISIÓN DE LEAD CON CAMILO',         where:'TALLER' },
+  { id:'crismery', sig:3, task:'CONFIRMACIÓN DE INICIO CON CRISMERY', where:'ADMIN' },
+  { id:'laura',    sig:4, task:'APROBACIÓN DE PLANTAS CON LAURA',     where:'CO-PRINCIPAL' },
+  { id:'juan',     sig:5, task:'APROBACIÓN DE FACHADA CON JUAN RAÚL', where:'COO' },
+  { id:'gerardo',  sig:6, task:'FIRMA FINAL CON GERARDO',             where:'CEO' },
+  { id:'marielmi', sig:0, task:'ENTREGA EL JUEGO EN CONFERENCIAS',    where:'CONFERENCIAS' },
 ];
+const PRINT_OBJECTIVE = { id:null, sig:0, task:'IMPRIME LAS LÁMINAS', where:'TALLER' };
+
+function currentObjective() {
+  // Laura may review before the print is ready, but Juan never may.
+  if (world.step === 5 && !world.printed) return PRINT_OBJECTIVE;
+  return CHAIN[world.step];
+}
+function objectiveLabel(o) {
+  if (!o) return '';
+  return (o.sig ? 'FIRMA ' + o.sig + '/6 · ' : '') + o.task;
+}
+function completedSignatures() {
+  return CHAIN.filter(c => c.sig && world.people.some(p => p.def.id === c.id && p.signed)).length;
+}
 
 // Hints tied to the first time you reach a place.
 const ZONES = [
@@ -643,7 +666,7 @@ const world = {
   step: 0, clock: 900, over: 0, hint: '', hintT: 0, fired: [],
   hp: null, coffee: 3, boost: 0, shake: 0, t: 0, talked: {},
   dlg: null, dlgPage: 0, sparks: [],
-  paused: false,
+  paused: false, printed: false, postT: 0,
 };
 const player = {
   // Collision box hangs at the feet with clearance top and bottom so it sits
@@ -729,6 +752,7 @@ function buildWorld() {
   player.x = 18 * TS + 8; player.y = 28 * TS + 12;
   player.face = 'down'; player.hopho = 0; player.phCharge = 1; player.slip = 0;
   world.step = 0; world.clock = 900; world.over = 0; world.coffee = 3; world.paused = false;
+  world.printed = false; world.postT = 0;
   world.boost = 0; world.talked = {}; world.dlg = null; world.wet = [];
   world.fired = ZONES.map(() => false); world.sparks = []; world.shake = 0;
   world.motes = [];
@@ -876,36 +900,63 @@ function interact() {
     return;
   }
   if (t.kind === 'plotter') {
-    openDialogue('PLOTTER', [world.step >= 4
-      ? 'LÁMINAS IMPRESAS. CÓDIGO LX-2027-114.'
-      : 'PIDE EL CÓDIGO DE PROYECTO PRIMERO.\nCRISMERY, EN ADMIN.'], 1);
+    if (world.step < 4) {
+      openDialogue('IMPRESORA', ['NO HAY NADA QUE IMPRIMIR AHORA.'], 1);
+    } else if (world.printed) {
+      openDialogue('IMPRESORA', ['LA IMPRESIÓN ESTÁ LISTA.\nLLÉVALA CONTIGO.'], 1);
+    } else {
+      world.printed = true;
+      openDialogue('IMPRESORA', ['IMPRIMIENDO...', 'LÁMINAS LISTAS.\nYA PUEDES LLEVÁRSELAS A JUAN RAÚL.'], 2);
+      world.dlg.onEnd = () => showHint(objectiveLabel(currentObjective()), 4);
+    }
     return;
   }
 
   const p = t.p, def = p.def;
   const want = CHAIN[world.step];
   if (want && def.id === want.id) {
-    const isLast = world.step === CHAIN.length - 1;
-    openDialogue(def.name + ' — ' + def.role, def.lines, 5);
-    world.dlg.onEnd = () => {
-      p.signed = true; world.step++;
-      if (isLast) { world.over = 1; return; }
-      world.sparks.push({ x: p.x, y: p.y - 10, life: 1 });
-      showHint('FIRMA ' + world.step + '/' + (CHAIN.length - 1) + ' — ' + CHAIN[world.step].task, 4);
-    };
+    startChainStep(p, 5);
     return;
   }
   const chainMember = CHAIN.some(c => c.id === def.id);
   if (chainMember && p.signed) {
-    openDialogue(def.name, ['YA TE FIRMÉ. SIGUE.'], 1);
+    openDialogue(def.name, [def.id === 'gaviota' ? 'YA HICISTE TU DAILY. SIGUE.' : 'YA TE FIRMÉ. SIGUE.'], 1);
+  } else if (def.id === 'juan' && !world.printed) {
+    const msg = world.step < 4
+      ? 'PRIMERO CONSIGUE CONFIRMACIÓN DEL INICIO DEL PROYECTO CON CRISMERY.'
+      : world.step === 4
+        ? 'REVÍSALO CON LAURA Y PASA POR LA IMPRESORA.\nNO LO VEO SIN LAS LÁMINAS IMPRESAS.'
+        : 'IMPRIME LAS LÁMINAS.\nNO LO VEO EN PANTALLA.';
+    openDialogue(def.name, [msg], 1);
   } else if (chainMember) {
-    openDialogue(def.name, ['TODAVÍA NO.\n' + (CHAIN[world.step] ? CHAIN[world.step].task : '')], 1);
+    openDialogue(def.name, ['TODAVÍA NO.\n' + (currentObjective() ? currentObjective().task : '')], 1);
   } else if (def.id === 'aracelis') {
     const dd = aracelisDialogue();
     openDialogue(def.name + ' — ' + def.role, dd.pages, 2, dd.choices);
   } else {
     openDialogue(def.name + ' — ' + def.role, [def.chat || '...'], 2);
   }
+}
+
+function startChainStep(p, cost) {
+  const def = p.def, want = CHAIN[world.step];
+  if (!want || want.id !== def.id) return;
+  if (def.id === 'juan' && !world.printed) {
+    openDialogue(def.name + ' — ' + def.role,
+      ['ANTES DE VERLO CONMIGO, VE A LA IMPRESORA.\nTRÁEME LAS LÁMINAS IMPRESAS.'], 1);
+    return;
+  }
+  const pages = def.id === 'laura' && !world.printed
+    ? def.lines.concat(['ANTES DE IR CON JUAN, PASA POR LA IMPRESORA.\nLLÉVALE LAS LÁMINAS IMPRESAS.'])
+    : def.lines;
+  const isLast = world.step === CHAIN.length - 1;
+  openDialogue(def.name + ' — ' + def.role, pages, cost);
+  world.dlg.onEnd = () => {
+    p.signed = true; world.step++;
+    if (isLast) { world.over = 3; world.postT = 0; return; }
+    world.sparks.push({ x: p.x, y: p.y - 10, life: 1 });
+    showHint(objectiveLabel(currentObjective()), 4);
+  };
 }
 
 function showHint(t, d) { world.hint = t; world.hintT = d; }
@@ -947,6 +998,11 @@ function update(dt) {
     if (world.wet[i].life <= 0) world.wet.splice(i, 1);
   }
 
+  if (world.over === 3) {
+    world.postT += dt;
+    if (world.postT >= 7) world.over = 1;
+    return;
+  }
   if (world.over) return;
   if (!world.dlg && world.t > INTRO_LOCK) {
     world.clock += dt / SEC_PER_MIN;
@@ -1021,14 +1077,7 @@ function update(dt) {
     if (pd < 15 && p.cool <= 0 && player.hopho <= 0 && !p.signed) {
       const want = CHAIN[world.step];
       if (want && want.id === p.def.id) {
-        const isLast = world.step === CHAIN.length - 1;
-        openDialogue(p.def.name + ' — ' + p.def.role, p.def.lines, 5);
-        world.dlg.onEnd = () => {
-          p.signed = true; world.step++;
-          if (isLast) { world.over = 1; return; }
-          world.sparks.push({ x: p.x, y: p.y - 10, life: 1 });
-          showHint('FIRMA ' + world.step + '/' + (CHAIN.length - 1) + ' — ' + CHAIN[world.step].task, 4);
-        };
+        startChainStep(p, 5);
       } else {
         p.cool = 14;
         if (p.def.id === 'aracelis') {
@@ -1371,7 +1420,13 @@ function drawFurn(f, c) {
     case 'fridge': sh(); R(px, py, w, h, P.white); R(px + w / 2, py + 3, 1, 9, P.whiteSh); break;
     case 'plotter':
       sh(); R(px, py, w, h, '#d8d4cf'); R(px, py, w, 3, '#eceae6');
-      R(px + 2, py + h - 8, w - 4, 4, P.paintDk); R(px + 3, py + 4, 6, 3, P.cyan); break;
+      R(px + 2, py + h - 8, w - 4, 4, P.paintDk); R(px + 3, py + 4, 6, 3, P.cyan);
+      if (currentObjective() === PRINT_OBJECTIVE) {
+        const bob = Math.sin(world.t * 4) * 2 | 0;
+        R(px + w / 2 - 2, py - 8 + bob, 4, 4, P.pink);
+        R(px + w / 2 - 1, py - 4 + bob, 2, 2, P.pink);
+      }
+      break;
     case 'sofa':
       sh(); R(px, py, w, h, '#8f9298'); R(px, py, w, 4, '#a3a6ac');
       for (let i = 0; i < f.w; i++) R(px + i * TS + 2, py + 5, TS - 4, h - 7, '#7e8188'); break;
@@ -1409,7 +1464,7 @@ function drawActor(spr, p, c, moving) {
     mctx.save(); mctx.translate(x + PW, y); mctx.scale(-1, 1); mctx.drawImage(img, 0, 0); mctx.restore();
   } else mctx.drawImage(img, x, y);
   if (p.signed) { mctx.fillStyle = P.violet; mctx.fillRect(x + 11, y - 4, 3, 3); }
-  else if (p.def && p.def.step === world.step + 1) {          // objective marker
+  else if (p.def && currentObjective() && currentObjective().id === p.def.id) { // objective marker
     const bob = Math.sin(world.t * 4) * 2 | 0;
     mctx.fillStyle = P.pink;
     mctx.fillRect(x + 5, y - 8 + bob, 4, 4); mctx.fillRect(x + 6, y - 4 + bob, 2, 2);
@@ -1456,9 +1511,9 @@ function drawHUD() {
   text(mctx, hhmm(CLOCK_END), 72, 16, P.ink);
 
   // objective
-  const cur = CHAIN[world.step];
+  const cur = currentObjective();
   if (cur) {
-    const s = (world.step === 0 ? '' : 'FIRMA ' + world.step + '/7 · ') + cur.task;
+    const s = objectiveLabel(cur);
     pill(mctx, 6, 26, Math.min(VW - 106, tw1(s) + 10), 12, 'rgba(255,255,255,0.86)');
     text(mctx, s, 11, 29, P.ink);
     pill(mctx, 6, 40, tw1(cur.where) + 10, 11, 'rgba(108,92,231,0.92)');
@@ -1487,10 +1542,12 @@ function drawHUD() {
     pill(mctx, mx - 3, my - 3, MAPW + 6, MAPH + 6, 'rgba(255,255,255,0.88)');
     mctx.drawImage(mini, mx, my);
     if (cur) {
-      const t = world.people.find(p => p.def.id === cur.id);
-      if (t && Math.sin(world.t * 6) > -0.3) {
+      const t = cur === PRINT_OBJECTIVE ? null : world.people.find(p => p.def.id === cur.id);
+      const plotter = cur === PRINT_OBJECTIVE ? world.props.find(f => f.t === 'plotter') : null;
+      if ((t || plotter) && Math.sin(world.t * 6) > -0.3) {
         mctx.fillStyle = P.pink;
-        mctx.fillRect(mx + (t.x / TS | 0) - 1, my + (t.y / TS | 0) - 1, 3, 3);
+        const tx = t ? (t.x / TS | 0) : plotter.x, ty = t ? (t.y / TS | 0) : plotter.y;
+        mctx.fillRect(mx + tx - 1, my + ty - 1, 3, 3);
       }
     }
     mctx.fillStyle = P.violet;
@@ -1587,30 +1644,68 @@ function drawOverlays() {
     const t1 = 'LUXIA LABS', t2 = 'DÍA DE ENTREGA';
     text(mctx, t1, (VW - tw1(t1) * 3) / 2, 88, P.violet, 3);
     text(mctx, t2, (VW - tw1(t2) * 2) / 2, 110, P.ink, 2);
-    const t3 = 'SIETE FIRMAS ANTES DE LAS 18:00';
+    const t3 = 'DAILY · SEIS FIRMAS · ENTREGA ANTES DE LAS 18:00';
     text(mctx, t3, (VW - tw1(t3)) / 2, 128, P.dim);
     const t4 = 'WASD MOVER · E HABLAR · ESPACIO AURICULARES · P PAUSA';
     text(mctx, t4, (VW - tw1(t4)) / 2, 140, P.dim);
     mctx.globalAlpha = 1;
   }
   if (!world.over) return;
+  if (world.over === 3) { drawClientArrival(); return; }
   const win = world.over === 1;
   mctx.fillStyle = win ? 'rgba(247,245,242,0.93)' : 'rgba(43,43,52,0.90)';
   mctx.fillRect(0, 0, VW, VH);
   const t1 = win ? 'ENTREGADO' : 'EL CLIENTE SE FUE';
   text(mctx, t1, (VW - tw1(t1) * 3) / 2, 74, win ? P.violet : P.red, 3);
-  const t2 = win ? 'ENTRASTE A LAS ' + hhmm(world.clock) : 'ERAN LAS 18:00. NADIE ESPERÓ.';
+  const t2 = win ? 'EL CLIENTE ENTRÓ · ENTREGA ' + hhmm(world.clock) : 'ERAN LAS 18:00. NADIE ESPERÓ.';
   text(mctx, t2, (VW - tw1(t2) * 2) / 2, 102, win ? P.ink : '#ffffff', 2);
   if (win) {
     const spare = Math.max(0, Math.round(CLOCK_END - world.clock));
     const t3 = spare + ' MINUTOS DE SOBRA';
     text(mctx, t3, (VW - tw1(t3)) / 2, 124, P.dim);
   } else {
-    const t3 = 'LLEGASTE A LA FIRMA ' + world.step + ' DE 7';
+    const t3 = 'CONSEGUISTE ' + completedSignatures() + ' DE 6 FIRMAS';
     text(mctx, t3, (VW - tw1(t3)) / 2, 124, '#c8c4d4');
   }
   const t4 = 'R PARA VOLVER A INTENTARLO';
   text(mctx, t4, (VW - tw1(t4)) / 2, 146, win ? P.violet : '#a8a4b8');
+}
+
+function drawClientArrival() {
+  const t = world.postT;
+  mctx.fillStyle = '#dfe5e8'; mctx.fillRect(0, 0, VW, 112);
+  mctx.fillStyle = '#b9c6cc'; mctx.fillRect(0, 96, VW, 16);
+  mctx.fillStyle = '#efede9'; mctx.fillRect(0, 112, VW, 128);
+  mctx.fillStyle = '#d2cec8'; mctx.fillRect(0, 183, VW, 57);
+  for (let x = 0; x < VW; x += 32) { mctx.fillStyle = '#c4beb8'; mctx.fillRect(x, 207, 24, 1); }
+
+  // Front elevation: the client crosses the sidewalk and disappears through the glass door.
+  mctx.fillStyle = '#f8f7f4'; mctx.fillRect(86, 44, 236, 139);
+  mctx.fillStyle = P.black; mctx.fillRect(86, 44, 236, 5);
+  mctx.fillStyle = '#93aeb9'; mctx.fillRect(105, 65, 78, 94); mctx.fillRect(226, 65, 75, 94);
+  mctx.fillStyle = P.black;
+  for (const x of [105,144,182,226,263,300]) mctx.fillRect(x, 65, 3, 94);
+  mctx.fillStyle = '#b7cbd2'; mctx.fillRect(185, 74, 39, 109);
+  mctx.fillStyle = P.black; mctx.fillRect(183, 65, 44, 4); mctx.fillRect(183, 65, 3, 118); mctx.fillRect(224, 65, 3, 118);
+  mctx.fillStyle = P.violet; mctx.fillRect(110, 53, 8, 8);
+  text(mctx, 'LUXIA LABS', 123, 54, P.ink);
+
+  const walk = Math.min(1, t / 4.2), fade = t > 4.2 ? Math.max(0, 1 - (t - 4.2) / .7) : 1;
+  const cx = 24 + (195 - 24) * walk, cy = 186 - Math.sin(walk * Math.PI) * 3;
+  mctx.globalAlpha = fade;
+  mctx.fillStyle = '#27324a'; mctx.fillRect(cx - 5, cy - 18, 11, 14);
+  mctx.fillStyle = SKIN.tan; mctx.fillRect(cx - 4, cy - 27, 9, 9);
+  mctx.fillStyle = HAIR.dark; mctx.fillRect(cx - 4, cy - 29, 9, 4);
+  mctx.fillStyle = '#252733'; mctx.fillRect(cx - 5, cy - 4, 4, 8); mctx.fillRect(cx + 2, cy - 4, 4, 8);
+  mctx.fillStyle = '#6f4b32'; mctx.fillRect(cx + 7, cy - 14, 7, 10);
+  mctx.globalAlpha = 1;
+
+  if (t > 1) {
+    const cap = t < 4.8 ? 'EL CLIENTE LLEGÓ' : 'EL CLIENTE ENTRÓ A LA OFICINA';
+    pill(mctx, (VW - tw1(cap) - 16) / 2, 12, tw1(cap) + 16, 17, 'rgba(255,255,255,.92)');
+    text(mctx, cap, (VW - tw1(cap)) / 2, 18, t < 4.8 ? P.ink : P.violet);
+  }
+  if (t > 5.2) text(mctx, 'ENTREGA COMPLETADA', (VW - tw1('ENTREGA COMPLETADA') * 2) / 2, 213, P.violet, 2);
 }
 
 // ---------- INPUT ----------
