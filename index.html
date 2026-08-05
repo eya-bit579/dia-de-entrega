@@ -37,47 +37,64 @@
   @media(min-width:641px){ .touch{display:none} }
 
   .stage{ position:relative; display:inline-block; }
-  #touchpad{ position:absolute; inset:0; pointer-events:none; }
+
+  /* Controls live below the canvas, in normal page flow -- never over the
+     game, so they can't cover a dialogue box. */
+  #touchpad{
+    display:flex; align-items:center; justify-content:space-between;
+    width:100%; max-width:420px; margin-top:4px;
+  }
   #touchpad button{
-    position:absolute; pointer-events:auto; touch-action:none;
-    font:400 11px ui-monospace,"SF Mono",Menlo,Consolas,monospace; letter-spacing:.04em;
-    color:var(--ink); background:rgba(247,245,242,.88);
+    touch-action:none; font:400 11px ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    letter-spacing:.04em; color:var(--ink); background:rgba(247,245,242,.92);
     border:1px solid #cbc5bf; border-bottom-width:3px; border-radius:10px;
     -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent;
   }
   #touchpad button:active{ background:rgba(108,92,231,.24); border-bottom-width:1px; transform:translateY(2px); }
-  .tp-corner{ width:34px; height:26px; font-size:10px; top:8px; }
-  #tp-r{ left:8px; }
-  #tp-p{ right:8px; }
-  .tp-dir{ width:38px; height:38px; font-size:15px; bottom:8px; }
-  #tp-up{ left:44px; bottom:52px; }
-  #tp-down{ left:44px; bottom:8px; }
-  #tp-left{ left:6px; bottom:30px; }
-  #tp-right{ left:82px; bottom:30px; }
-  .tp-round{ border-radius:50%; bottom:14px; }
-  #tp-e{ width:52px; height:52px; font-size:15px; right:12px; }
-  #tp-ph{ width:36px; height:36px; font-size:15px; right:70px; bottom:32px; }
+
+  /* Floating joystick: wherever you first touch inside the zone becomes the
+     centre. Base + knob are positioned in JS and hidden until touched. */
+  .tp-joyzone{
+    position:relative; width:120px; height:120px; touch-action:none;
+    flex-shrink:0;
+  }
+  .tp-joybase, .tp-joyknob{
+    position:absolute; border-radius:50%; opacity:0; pointer-events:none;
+    transform:translate(-50%,-50%);
+  }
+  .tp-joybase{ width:76px; height:76px; background:rgba(108,92,231,.10); border:1px solid rgba(108,92,231,.35); }
+  .tp-joyknob{ width:34px; height:34px; background:rgba(108,92,231,.30); border:1px solid rgba(108,92,231,.55); }
+
+  .tp-mid{ display:flex; flex-direction:column; gap:6px; }
+  .tp-small{ width:34px; height:26px; font-size:10px; }
+  .tp-right{ display:flex; align-items:center; gap:8px; }
+  .tp-ph{ width:36px; height:36px; border-radius:50%; font-size:15px; }
+  .tp-e{ width:54px; height:54px; border-radius:50%; font-size:15px; }
 </style>
 </head>
 <body>
 <div class="stage">
   <canvas id="screen" tabindex="0" aria-label="Nivel jugable: la oficina de Luxia Labs vista en planta"></canvas>
-  <div id="touchpad" class="touch">
-    <button id="tp-r" class="tp-corner" aria-label="Reiniciar">R</button>
-    <button id="tp-p" class="tp-corner" aria-label="Pausa">II</button>
-    <button id="tp-up" class="tp-dir" aria-label="Arriba">▲</button>
-    <button id="tp-left" class="tp-dir" aria-label="Izquierda">◀</button>
-    <button id="tp-right" class="tp-dir" aria-label="Derecha">▶</button>
-    <button id="tp-down" class="tp-dir" aria-label="Abajo">▼</button>
-    <button id="tp-ph" class="tp-round" aria-label="Auriculares">🎧</button>
-    <button id="tp-e" class="tp-round" aria-label="Hablar">E</button>
+</div>
+<div id="touchpad" class="touch">
+  <div id="tp-joyzone" class="tp-joyzone" aria-label="Mover: toca y arrastra">
+    <div id="tp-joybase" class="tp-joybase"></div>
+    <div id="tp-joyknob" class="tp-joyknob"></div>
+  </div>
+  <div class="tp-mid">
+    <button id="tp-p" class="tp-small" aria-label="Pausa">II</button>
+    <button id="tp-r" class="tp-small" aria-label="Reiniciar">R</button>
+  </div>
+  <div class="tp-right">
+    <button id="tp-ph" class="tp-ph" aria-label="Auriculares">🎧</button>
+    <button id="tp-e" class="tp-e" aria-label="Hablar">E</button>
   </div>
 </div>
 <div class="bar">
   <span class="t">Luxia Labs · Hora de entrega</span>
   <span class="sep">|</span>
   <span class="desk"><kbd>WASD</kbd> caminar <b>·</b> <kbd>E</kbd> hablar <b>·</b> <kbd>Espacio</kbd> auriculares <b>·</b> <kbd>R</kbd> reiniciar</span>
-  <span class="touch">flechas para caminar <b>·</b> E hablar <b>·</b> auriculares, pausa y reinicio en pantalla</span>
+  <span class="touch">toca y arrastra para caminar <b>·</b> E hablar <b>·</b> auriculares, pausa y reinicio abajo</span>
   <span class="sep">|</span>
   <span>haz clic en la pantalla si no responden las teclas</span>
 </div>
@@ -1045,9 +1062,11 @@ function initGfx() {
   resize();
 }
 function resize() {
+  const mobile = window.innerWidth <= 640;          // matches the CSS .touch breakpoint
+  const vBudget = 96 + (mobile ? 132 : 0);           // room for the control bar below the canvas
   const s = Math.max(1, Math.min(4,
     Math.floor((window.innerWidth - 16) / VW),
-    Math.floor((window.innerHeight - 96) / VH)));
+    Math.floor((window.innerHeight - vBudget) / VH)));
   scale = s;
   out.width = VW * s; out.height = VH * s;
   out.style.width = (VW * s) + 'px'; out.style.height = (VH * s) + 'px';
@@ -1639,29 +1658,59 @@ window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; e
 // via the same CSS breakpoint as the keyboard-vs-touch instruction text).
 // Directional buttons hold like a key; the rest fire once per tap through
 // the same functions the keyboard uses.
-function bindHoldButton(id, keyName) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const down = e => {
-    e.preventDefault();
-    if (onLastPage() && world.dlg && world.dlg.choices) cycleChoice(1);
-    keys[keyName] = true;
-  };
-  const up = e => { e.preventDefault(); keys[keyName] = false; };
-  el.addEventListener('touchstart', down, { passive: false });
-  el.addEventListener('touchend', up, { passive: false });
-  el.addEventListener('touchcancel', up, { passive: false });
-}
 function bindTapButton(id, fn) {
   const el = document.getElementById(id);
   if (!el) return;
   el.addEventListener('touchstart', e => { e.preventDefault(); fn(); }, { passive: false });
 }
+const JOY_R = 36;   // max knob travel in px, matches the CSS knob/base sizing
+function bindJoystick() {
+  const zone = document.getElementById('tp-joyzone');
+  const base = document.getElementById('tp-joybase');
+  const knob = document.getElementById('tp-joyknob');
+  if (!zone || !base || !knob) return;
+  let touchId = null, ox = 0, oy = 0, cycled = false;
+
+  function place(el, x, y) { el.style.left = x + 'px'; el.style.top = y + 'px'; }
+  function release() {
+    touchId = null; keys.a = keys.d = keys.w = keys.s = false;
+    base.style.opacity = 0; knob.style.opacity = 0;
+  }
+  zone.addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (touchId !== null) return;               // one finger drives the stick
+    const t = e.changedTouches[0], r = zone.getBoundingClientRect();
+    touchId = t.identifier; ox = t.clientX - r.left; oy = t.clientY - r.top; cycled = false;
+    place(base, ox, oy); place(knob, ox, oy);
+    base.style.opacity = 1; knob.style.opacity = 1;
+  }, { passive: false });
+  zone.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier !== touchId) continue;
+      const r = zone.getBoundingClientRect();
+      const dx = (t.clientX - r.left) - ox, dy = (t.clientY - r.top) - oy, m = Math.hypot(dx, dy);
+      const cl = m > JOY_R ? JOY_R / m : 1;
+      place(knob, ox + dx * cl, oy + dy * cl);
+      if (onLastPage() && world.dlg && world.dlg.choices) {
+        if (!cycled && m >= 8) { cycleChoice(1); cycled = true; }   // one toggle per drag
+        continue;
+      }
+      keys.a = keys.d = keys.w = keys.s = false;
+      if (m < 8) continue;                       // deadzone
+      if (dx / m < -.38) keys.a = true; if (dx / m > .38) keys.d = true;
+      if (dy / m < -.38) keys.w = true; if (dy / m > .38) keys.s = true;
+    }
+  }, { passive: false });
+  const end = e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) if (t.identifier === touchId) release();
+  };
+  zone.addEventListener('touchend', end, { passive: false });
+  zone.addEventListener('touchcancel', end, { passive: false });
+}
 function bindTouch() {
-  bindHoldButton('tp-up', 'w');
-  bindHoldButton('tp-down', 's');
-  bindHoldButton('tp-left', 'a');
-  bindHoldButton('tp-right', 'd');
+  bindJoystick();
   bindTapButton('tp-e', doInteract);
   bindTapButton('tp-ph', doHeadphoneToggle);
   bindTapButton('tp-p', doPauseToggle);
