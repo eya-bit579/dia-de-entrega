@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>Luxia Labs — Día de entrega</title>
+<title>Luxia Labs — Hora de entrega</title>
 <style>
   :root{ --paper:#f4f2ef; --ink:#2b2b34; --violet:#6c5ce7; --dim:#8a837d; }
   *{box-sizing:border-box}
@@ -35,15 +35,49 @@
   .sep{ color:#d6d0ca }
   @media(max-width:640px){ .desk{display:none} }
   @media(min-width:641px){ .touch{display:none} }
+
+  .stage{ position:relative; display:inline-block; }
+  #touchpad{ position:absolute; inset:0; pointer-events:none; }
+  #touchpad button{
+    position:absolute; pointer-events:auto; touch-action:none;
+    font:400 11px ui-monospace,"SF Mono",Menlo,Consolas,monospace; letter-spacing:.04em;
+    color:var(--ink); background:rgba(247,245,242,.88);
+    border:1px solid #cbc5bf; border-bottom-width:3px; border-radius:10px;
+    -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent;
+  }
+  #touchpad button:active{ background:rgba(108,92,231,.24); border-bottom-width:1px; transform:translateY(2px); }
+  .tp-corner{ width:34px; height:26px; font-size:10px; top:8px; }
+  #tp-r{ left:8px; }
+  #tp-p{ right:8px; }
+  .tp-dir{ width:38px; height:38px; font-size:15px; bottom:8px; }
+  #tp-up{ left:44px; bottom:52px; }
+  #tp-down{ left:44px; bottom:8px; }
+  #tp-left{ left:6px; bottom:30px; }
+  #tp-right{ left:82px; bottom:30px; }
+  .tp-round{ border-radius:50%; bottom:14px; }
+  #tp-e{ width:52px; height:52px; font-size:15px; right:12px; }
+  #tp-ph{ width:36px; height:36px; font-size:15px; right:70px; bottom:32px; }
 </style>
 </head>
 <body>
-<canvas id="screen" tabindex="0" aria-label="Nivel jugable: la oficina de Luxia Labs vista en planta"></canvas>
+<div class="stage">
+  <canvas id="screen" tabindex="0" aria-label="Nivel jugable: la oficina de Luxia Labs vista en planta"></canvas>
+  <div id="touchpad" class="touch">
+    <button id="tp-r" class="tp-corner" aria-label="Reiniciar">R</button>
+    <button id="tp-p" class="tp-corner" aria-label="Pausa">II</button>
+    <button id="tp-up" class="tp-dir" aria-label="Arriba">▲</button>
+    <button id="tp-left" class="tp-dir" aria-label="Izquierda">◀</button>
+    <button id="tp-right" class="tp-dir" aria-label="Derecha">▶</button>
+    <button id="tp-down" class="tp-dir" aria-label="Abajo">▼</button>
+    <button id="tp-ph" class="tp-round" aria-label="Auriculares">🎧</button>
+    <button id="tp-e" class="tp-round" aria-label="Hablar">E</button>
+  </div>
+</div>
 <div class="bar">
   <span class="t">Luxia Labs · Hora de entrega</span>
   <span class="sep">|</span>
   <span class="desk"><kbd>WASD</kbd> caminar <b>·</b> <kbd>E</kbd> hablar <b>·</b> <kbd>Espacio</kbd> auriculares <b>·</b> <kbd>R</kbd> reiniciar</span>
-  <span class="touch">arrastra a la izquierda para caminar <b>·</b> toca a la derecha para hablar</span>
+  <span class="touch">flechas para caminar <b>·</b> E hablar <b>·</b> auriculares, pausa y reinicio en pantalla</span>
   <span class="sep">|</span>
   <span>haz clic en la pantalla si no responden las teclas</span>
 </div>
@@ -1561,24 +1595,36 @@ function drawOverlays() {
 }
 
 // ---------- INPUT ----------
+function doRestart() {
+  buildWorld(); bakeMini(); world.t = 0;
+  cam.x = player.x - VW / 2; cam.y = player.y - VH / 2;
+}
+function doPauseToggle() {
+  if (world.t > INTRO_LOCK && !world.over) world.paused = !world.paused;
+}
+function doInteract() {
+  if (world.paused || world.t <= INTRO_LOCK) return;
+  interact();
+}
+function doHeadphoneToggle() {
+  if (world.paused || world.t <= INTRO_LOCK) return;
+  if (world.dlg) { if (onLastPage() && world.dlg.choices) selectChoice(); else advanceDialogue(); }
+  else if (player.hopho > 0) player.hopho = 0;
+  else if (player.phCharge > .12) player.hopho = 1;
+}
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'e', 'p'].includes(k)) e.preventDefault();
-  if (k === 'r') { buildWorld(); bakeMini(); world.t = 0;
-    cam.x = player.x - VW / 2; cam.y = player.y - VH / 2; keys[k] = true; return; }
-  if (k === 'p' && world.t > INTRO_LOCK && !world.over) { world.paused = !world.paused; return; }
+  if (k === 'r') { doRestart(); keys[k] = true; return; }
+  if (k === 'p') { doPauseToggle(); return; }
   if (world.paused || world.t <= INTRO_LOCK) { keys[k] = true; return; }   // frozen: track the key, do nothing else
   if (onLastPage() && world.dlg.choices &&
       ['a', 'd', 'arrowleft', 'arrowright', 'w', 's', 'arrowup', 'arrowdown'].includes(k)) {
     cycleChoice(1);          // binary choice: either key just toggles the other option
     keys[k] = true; return;
   }
-  if (k === 'e' && !ePressed) { ePressed = true; interact(); }
-  if (k === ' ' && !keys[' ']) {
-    if (world.dlg) { if (onLastPage() && world.dlg.choices) selectChoice(); else advanceDialogue(); }
-    else if (player.hopho > 0) player.hopho = 0;
-    else if (player.phCharge > .12) player.hopho = 1;
-  }
+  if (k === 'e' && !ePressed) { ePressed = true; doInteract(); }
+  if (k === ' ' && !keys[' ']) { doHeadphoneToggle(); }
   keys[k] = true;
 });
 window.addEventListener('keyup', e => {
@@ -1589,35 +1635,37 @@ window.addEventListener('keyup', e => {
 window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; ePressed = false; });
 
 // touch: drag the left half to walk, tap the right half to talk
-let stick = null;
-function touchDirs() {
-  if (!stick) return;          // desktop: leave real keyboard state alone
-  keys.a = keys.d = keys.w = keys.s = false;
-  const dx = stick.cx - stick.ox, dy = stick.cy - stick.oy, m = Math.hypot(dx, dy);
-  if (m < 8) return;
-  if (dx / m < -.38) keys.a = true; if (dx / m > .38) keys.d = true;
-  if (dy / m < -.38) keys.w = true; if (dy / m > .38) keys.s = true;
+// Explicit on-screen buttons (mobile only -- #touchpad is hidden on desktop
+// via the same CSS breakpoint as the keyboard-vs-touch instruction text).
+// Directional buttons hold like a key; the rest fire once per tap through
+// the same functions the keyboard uses.
+function bindHoldButton(id, keyName) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const down = e => {
+    e.preventDefault();
+    if (onLastPage() && world.dlg && world.dlg.choices) cycleChoice(1);
+    keys[keyName] = true;
+  };
+  const up = e => { e.preventDefault(); keys[keyName] = false; };
+  el.addEventListener('touchstart', down, { passive: false });
+  el.addEventListener('touchend', up, { passive: false });
+  el.addEventListener('touchcancel', up, { passive: false });
+}
+function bindTapButton(id, fn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('touchstart', e => { e.preventDefault(); fn(); }, { passive: false });
 }
 function bindTouch() {
-  const el = out;
-  el.addEventListener('touchstart', e => {
-    const r = el.getBoundingClientRect();
-    for (const t of e.changedTouches) {
-      if (t.clientX - r.left < r.width * .45) stick = { id: t.identifier, ox: t.clientX, oy: t.clientY, cx: t.clientX, cy: t.clientY };
-      else interact();
-    }
-    e.preventDefault();
-  }, { passive: false });
-  el.addEventListener('touchmove', e => {
-    for (const t of e.changedTouches) if (stick && t.identifier === stick.id) { stick.cx = t.clientX; stick.cy = t.clientY; }
-    e.preventDefault();
-  }, { passive: false });
-  const end = e => {
-    for (const t of e.changedTouches) if (stick && t.identifier === stick.id) stick = null;
-    e.preventDefault();
-  };
-  el.addEventListener('touchend', end, { passive: false });
-  el.addEventListener('touchcancel', end, { passive: false });
+  bindHoldButton('tp-up', 'w');
+  bindHoldButton('tp-down', 's');
+  bindHoldButton('tp-left', 'a');
+  bindHoldButton('tp-right', 'd');
+  bindTapButton('tp-e', doInteract);
+  bindTapButton('tp-ph', doHeadphoneToggle);
+  bindTapButton('tp-p', doPauseToggle);
+  bindTapButton('tp-r', doRestart);
 }
 
 // ---------- LOOP ----------
@@ -1630,7 +1678,7 @@ function frame(now) {
   if (dt > .25) dt = .25;
   acc += dt;
   let n = 0;
-  while (acc >= STEP && n < 8) { touchDirs(); update(STEP); acc -= STEP; n++; }
+  while (acc >= STEP && n < 8) { update(STEP); acc -= STEP; n++; }
   updateCam(dt);
   render();
 }
