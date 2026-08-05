@@ -37,6 +37,30 @@
   @media(min-width:641px){ .touch{display:none} }
 
   .stage{ position:relative; display:inline-block; }
+  #pause-mute{
+    display:none; position:absolute; left:50%; top:76%; transform:translate(-50%,-50%);
+    z-index:3; min-width:126px; padding:5px 10px;
+    font:400 10px ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--ink);
+    background:rgba(247,245,242,.96); border:1px solid rgba(108,92,231,.55);
+    border-bottom-width:3px; border-radius:7px; cursor:pointer;
+  }
+  #pause-mute.show{display:block}
+  #pause-mute:active{border-bottom-width:1px; transform:translate(-50%,calc(-50% + 2px))}
+  #start-button{
+    display:none; position:absolute; left:50%; top:78%; transform:translate(-50%,-50%);
+    z-index:4; min-width:112px; padding:8px 18px;
+    font:400 12px ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    letter-spacing:.16em; text-transform:uppercase; color:#fff;
+    background:var(--violet); border:1px solid #4f43bd; border-bottom-width:4px;
+    border-radius:8px; box-shadow:0 8px 22px rgba(43,43,52,.24); cursor:pointer;
+  }
+  #start-button.show{display:block}
+  #start-button:active{border-bottom-width:1px; transform:translate(-50%,calc(-50% + 3px))}
+  .play-icon{
+    display:inline-block; margin-right:8px; width:0; height:0; vertical-align:-1px;
+    border-top:5px solid transparent; border-bottom:5px solid transparent; border-left:8px solid currentColor;
+  }
 
   /* Controls live below the canvas, in normal page flow -- never over the
      game, so they can't cover a dialogue box. */
@@ -77,6 +101,7 @@
 
   .tp-mid{ display:flex; flex-direction:column; gap:6px; }
   .tp-small{ width:34px; height:26px; font-size:10px; }
+  .tp-sound{ width:34px; height:26px; font-size:13px; }
   .pause-icon{
     display:inline-block; width:12px; height:13px; vertical-align:middle;
     background:linear-gradient(90deg,currentColor 0 4px,transparent 4px 8px,currentColor 8px 12px);
@@ -89,6 +114,8 @@
 <body>
 <div class="stage">
   <canvas id="screen" tabindex="0" aria-label="Nivel jugable: la oficina de Luxia Labs vista en planta"></canvas>
+  <button id="pause-mute" type="button" aria-label="Silenciar sonido">🔊 Silenciar</button>
+  <button id="start-button" type="button" aria-label="Comenzar el juego"><span class="play-icon" aria-hidden="true"></span>Jugar</button>
 </div>
 <div id="touchpad" class="touch">
   <div id="tp-joyzone" class="tp-joyzone" aria-label="Mover: toca y arrastra">
@@ -96,6 +123,7 @@
     <div id="tp-joyknob" class="tp-joyknob"></div>
   </div>
   <div class="tp-mid">
+    <button id="tp-m" class="tp-sound" aria-label="Silenciar sonido">🔊</button>
     <button id="tp-p" class="tp-small" aria-label="Pausa"><span class="pause-icon" aria-hidden="true"></span></button>
     <button id="tp-r" class="tp-small" aria-label="Reiniciar">R</button>
   </div>
@@ -106,10 +134,10 @@
 </div>
 <div class="bar">
   <span class="t">Luxia Labs · Día de entrega</span>
-  <span>v0.3</span>
+  <span>v0.5</span>
   <span class="sep">|</span>
-  <span class="desk"><kbd>WASD</kbd> caminar <b>·</b> <kbd>E</kbd> hablar <b>·</b> <kbd>Espacio</kbd> auriculares <b>·</b> <kbd>R</kbd> reiniciar</span>
-  <span class="touch">toca y arrastra para caminar <b>·</b> E hablar <b>·</b> auriculares, pausa y reinicio abajo</span>
+  <span class="desk"><kbd>WASD</kbd> caminar <b>·</b> <kbd>E</kbd> hablar <b>·</b> <kbd>Espacio</kbd> auriculares <b>·</b> <kbd>P/Esc</kbd> pausa <b>·</b> <kbd>M</kbd> sonido <b>·</b> <kbd>R</kbd> reiniciar</span>
+  <span class="touch">toca y arrastra para caminar <b>·</b> E hablar <b>·</b> sonido, auriculares, pausa y reinicio abajo</span>
   <span class="sep">|</span>
   <span>haz clic en la pantalla si no responden las teclas</span>
 </div>
@@ -122,7 +150,7 @@
 
 const VW = 384, VH = 240, TS = 16;
 const MAPW = 33, MAPH = 44;          // world = 528 x 704
-const BUILD = '0.3';
+const BUILD = '0.5';
 
 // ---------- PALETTE ----------
 // Sampled off the two office photos: warm grey porcelain, white paint,
@@ -145,6 +173,143 @@ const P = {
   ink:    '#2b2b34', dim:   '#7d7671',
   amber:  '#e8a13c', red:   '#d9483f',
 };
+
+// ---------- PROCEDURAL AUDIO ----------
+// Kept inside the single HTML: office ambience and short game cues are built
+// with Web Audio on the first user gesture, so there are no external assets.
+const audio = {
+  ctx:null, master:null, officeGain:null, humGain:null, windGain:null,
+  muted:false, stepT:0, postCue:false,
+};
+function makeNoiseBuffer(seconds) {
+  const ctx = audio.ctx, frames = Math.floor(ctx.sampleRate * seconds);
+  const buffer = ctx.createBuffer(1, frames, ctx.sampleRate), data = buffer.getChannelData(0);
+  let seed = 7411;
+  for (let i = 0; i < frames; i++) {
+    seed = (seed * 16807) % 2147483647;
+    data[i] = seed / 1073741823.5 - 1;
+  }
+  return buffer;
+}
+function ensureAudio() {
+  if (audio.ctx) {
+    if (audio.ctx.state === 'suspended') audio.ctx.resume();
+    return true;
+  }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return false;
+  const ctx = audio.ctx = new AC();
+  audio.master = ctx.createGain();
+  audio.master.gain.value = audio.muted ? 0 : .48;
+  audio.master.connect(ctx.destination);
+
+  const hum = ctx.createOscillator(), humGain = ctx.createGain();
+  hum.type = 'sine'; hum.frequency.value = 58; humGain.gain.value = .007;
+  audio.humGain = humGain;
+  hum.connect(humGain).connect(audio.master); hum.start();
+
+  const noise = makeNoiseBuffer(2);
+  const office = ctx.createBufferSource(), officeFilter = ctx.createBiquadFilter(), officeGain = ctx.createGain();
+  office.buffer = noise; office.loop = true; officeFilter.type = 'lowpass'; officeFilter.frequency.value = 520;
+  officeGain.gain.value = .009; office.connect(officeFilter).connect(officeGain).connect(audio.master); office.start();
+  audio.officeGain = officeGain;
+
+  const wind = ctx.createBufferSource(), windFilter = ctx.createBiquadFilter();
+  audio.windGain = ctx.createGain(); wind.buffer = noise; wind.loop = true;
+  windFilter.type = 'bandpass'; windFilter.frequency.value = 780; windFilter.Q.value = .55;
+  audio.windGain.gain.value = 0;
+  wind.connect(windFilter).connect(audio.windGain).connect(audio.master); wind.start();
+  if (ctx.state === 'suspended') ctx.resume();
+  return true;
+}
+function tone(freq, duration, type, volume, delay, endFreq) {
+  if (!audio.ctx || audio.muted) return;
+  const ctx = audio.ctx, now = ctx.currentTime + (delay || 0);
+  const osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.type = type || 'sine'; osc.frequency.setValueAtTime(freq, now);
+  if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
+  gain.gain.setValueAtTime(Math.max(.0001, volume || .04), now);
+  gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
+  osc.connect(gain).connect(audio.master); osc.start(now); osc.stop(now + duration + .02);
+}
+function noiseBurst(duration, volume, frequency, delay) {
+  if (!audio.ctx || audio.muted) return;
+  const ctx = audio.ctx, now = ctx.currentTime + (delay || 0);
+  const source = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+  source.buffer = makeNoiseBuffer(Math.max(.05, duration));
+  filter.type = 'bandpass'; filter.frequency.value = frequency || 700; filter.Q.value = .8;
+  gain.gain.setValueAtTime(volume || .035, now); gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
+  source.connect(filter).connect(gain).connect(audio.master); source.start(now); source.stop(now + duration + .02);
+}
+function sfx(name) {
+  if (!ensureAudio() || audio.muted) return;
+  switch (name) {
+    case 'step': noiseBurst(.045, .025, 260); tone(85, .035, 'sine', .018); break;
+    case 'talk': tone(390 + ((world.t * 37) % 90), .055, 'square', .018); break;
+    case 'page': tone(560, .045, 'triangle', .022); break;
+    case 'select': tone(690, .06, 'triangle', .026); break;
+    case 'task': tone(520, .10, 'sine', .035); tone(700, .16, 'sine', .035, .08); break;
+    case 'signature': tone(610, .11, 'triangle', .04); tone(820, .13, 'triangle', .04, .08); tone(1050, .20, 'sine', .035, .17); break;
+    case 'printer': noiseBurst(.55, .06, 920); tone(135, .30, 'square', .022, 0, 105); tone(760, .08, 'sine', .03, .52); break;
+    case 'coffee': noiseBurst(.48, .038, 1200); tone(240, .18, 'sine', .025, .35, 310); break;
+    case 'error': tone(190, .14, 'square', .035, 0, 145); tone(130, .16, 'square', .03, .12); break;
+    case 'pause': tone(330, .08, 'triangle', .025); break;
+    case 'resume': tone(440, .08, 'triangle', .025); break;
+    case 'headphones': tone(920, .06, 'square', .018); tone(1250, .08, 'sine', .018, .05); break;
+    case 'door': noiseBurst(.28, .035, 480); tone(280, .18, 'sine', .025, .10, 430); break;
+    case 'success': tone(440, .20, 'sine', .04); tone(660, .28, 'sine', .04, .10); tone(880, .42, 'sine', .04, .22); break;
+    case 'win': tone(660, .25, 'triangle', .04); tone(880, .30, 'triangle', .04, .13); tone(1100, .5, 'sine', .035, .28); break;
+    case 'lose': tone(330, .22, 'sawtooth', .035, 0, 220); tone(185, .45, 'sawtooth', .03, .18, 105); break;
+  }
+}
+function updateAudio(dt) {
+  if (!audio.ctx) return;
+  const muffled = player.hopho > 0;
+  if (audio.officeGain) audio.officeGain.gain.setTargetAtTime(world.paused ? .004 : muffled ? .002 : .009, audio.ctx.currentTime, .16);
+  if (audio.humGain) audio.humGain.gain.setTargetAtTime(muffled ? .0025 : .007, audio.ctx.currentTime, .16);
+  if (audio.windGain) {
+    const onTerrace = roomAt(player.x, player.y) === 'TERRAZA ABIERTA';
+    const target = !audio.muted && onTerrace && !world.paused ? (muffled ? .007 : .035) : .001;
+    audio.windGain.gain.setTargetAtTime(target, audio.ctx.currentTime, .24);
+  }
+  audio.stepT -= dt;
+  if (player.moving && !world.dlg && !world.over && !world.paused && audio.stepT <= 0) {
+    sfx('step'); audio.stepT = world.boost > 0 ? .17 : .25;
+  }
+}
+function updateSoundButton() {
+  const button = document.getElementById && document.getElementById('tp-m');
+  if (button) {
+    button.textContent = audio.muted ? '🔇' : '🔊';
+    button.setAttribute('aria-label', audio.muted ? 'Activar sonido' : 'Silenciar sonido');
+  }
+  const pauseButton = document.getElementById && document.getElementById('pause-mute');
+  if (pauseButton) {
+    pauseButton.textContent = audio.muted ? '🔇 Activar sonido' : '🔊 Silenciar';
+    pauseButton.setAttribute('aria-label', audio.muted ? 'Activar sonido' : 'Silenciar sonido');
+  }
+}
+function updatePauseAudioButton() {
+  const button = document.getElementById && document.getElementById('pause-mute');
+  if (button) button.classList.toggle('show', !!world.paused);
+}
+function updateStartButton() {
+  const button = document.getElementById && document.getElementById('start-button');
+  if (button) button.classList.toggle('show', !world.started);
+}
+function beginGame() {
+  if (world.started) return;
+  ensureAudio(); world.started = true; world.startFade = 0;
+  updateStartButton(); sfx('task');
+  try { out.focus(); } catch (e) { }
+}
+function toggleSound() {
+  ensureAudio(); audio.muted = !audio.muted;
+  if (audio.master) audio.master.gain.setTargetAtTime(audio.muted ? 0 : .48, audio.ctx.currentTime, .03);
+  updateSoundButton();
+  showHint(audio.muted ? 'SONIDO SILENCIADO' : 'SONIDO ACTIVADO', 2);
+  if (!audio.muted) sfx('resume');
+}
 
 // ---------- 3x5 FONT + SPANISH ACCENTS ----------
 const GLYPHS = {
@@ -691,7 +856,7 @@ const world = {
   step: 0, clock: 900, over: 0, hint: '', hintT: 0, fired: [],
   hp: null, coffee: 3, boost: 0, shake: 0, t: 0, talked: {},
   dlg: null, dlgPage: 0, sparks: [],
-  paused: false, printed: false, postT: 0,
+  paused: false, printed: false, postT: 0, started: false, startFade: 0,
 };
 const player = {
   // Collision box hangs at the feet with clearance top and bottom so it sits
@@ -702,7 +867,8 @@ const player = {
 const CLOCK_END = 1080;        // 18:00
 const SEC_PER_MIN = 1.25;
 const SPEED = 74;
-const INTRO_LOCK = 3.5;      // matches the banner's own fade-out in drawOverlays
+const START_FADE = .55;
+function gameReady() { return world.started && world.startFade >= START_FADE; }
 
 function inRect(x, y, r) { return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h; }
 
@@ -777,7 +943,10 @@ function buildWorld() {
   player.x = 18 * TS + 8; player.y = 28 * TS + 12;
   player.face = 'down'; player.hopho = 0; player.phCharge = 1; player.slip = 0;
   world.step = 0; world.clock = 900; world.over = 0; world.coffee = 3; world.paused = false;
-  world.printed = false; world.postT = 0;
+  world.printed = false; world.postT = 0; world.started = false; world.startFade = 0;
+  audio.stepT = 0; audio.postCue = false;
+  updatePauseAudioButton();
+  updateStartButton();
   world.boost = 0; world.talked = {}; world.dlg = null; world.wet = [];
   world.fired = ZONES.map(() => false); world.sparks = []; world.shake = 0;
   world.motes = [];
@@ -863,6 +1032,7 @@ function openDialogue(who, pages, cost, choices) {
   world.dlg = { who, pages: Array.isArray(pages) ? pages : [pages], cost: cost || 0,
     choices: choices || null, choiceIndex: 0 };
   world.dlgPage = 0;
+  sfx('talk');
 }
 function closeDialogue() {
   if (world.dlg && world.dlg.cost) world.clock += world.dlg.cost;
@@ -871,7 +1041,7 @@ function closeDialogue() {
 function onLastPage() { return world.dlg && world.dlgPage === world.dlg.pages.length - 1; }
 function advanceDialogue() {
   if (!world.dlg) return;
-  if (world.dlgPage < world.dlg.pages.length - 1) { world.dlgPage++; return; }
+  if (world.dlgPage < world.dlg.pages.length - 1) { world.dlgPage++; sfx('page'); return; }
   if (world.dlg.choices) return;          // last page with choices: E selects, handled elsewhere
   const d = world.dlg;
   closeDialogue();
@@ -885,6 +1055,7 @@ function cycleChoice(dir) {
 function selectChoice() {
   if (!onLastPage() || !world.dlg.choices) return;
   const c = world.dlg.choices[world.dlg.choiceIndex];
+  sfx('select');
   closeDialogue();
   if (c && c.run) c.run();
 }
@@ -919,18 +1090,24 @@ function interact() {
   if (!t) return;
 
   if (t.kind === 'coffee') {
-    if (world.coffee <= 0) { openDialogue('CAFETERA', ['SE ACABÓ EL CAFÉ.\nCLÁSICO.'], 0); return; }
+    if (world.boost > 0) {
+      sfx('error'); openDialogue('CAFETERA', ['YA TIENES CAFÉ.\nTERMINA ESE ANTES DE SERVIRTE OTRO.'], 0); return;
+    }
+    if (world.coffee <= 0) { sfx('error'); openDialogue('CAFETERA', ['SE ACABÓ EL CAFÉ.\nCLÁSICO.'], 0); return; }
     world.coffee--; world.boost = 18;
+    sfx('coffee');
     openDialogue('CAFETERA', ['CAFÉ. CAMINAS MÁS RÁPIDO POR UN RATO.'], 2);
     return;
   }
   if (t.kind === 'plotter') {
     if (world.step < 4) {
+      sfx('error');
       openDialogue('IMPRESORA', ['NO HAY NADA QUE IMPRIMIR AHORA.'], 1);
     } else if (world.printed) {
       openDialogue('IMPRESORA', ['LA IMPRESIÓN ESTÁ LISTA.\nLLÉVALA CONTIGO.'], 1);
     } else {
       world.printed = true;
+      sfx('printer');
       openDialogue('IMPRESORA', ['IMPRIMIENDO...', 'LÁMINAS LISTAS.\nYA PUEDES LLEVÁRSELAS A JUAN RAÚL.'], 2);
       world.dlg.onEnd = () => showHint('IMPRESIÓN LISTA\nSIGUIENTE: ' + objectiveLabel(currentObjective()), 5);
     }
@@ -947,6 +1124,7 @@ function interact() {
   if (chainMember && p.signed) {
     openDialogue(def.name, def.id === 'gaviota' ? gaviotaGuidance() : ['YA TE FIRMÉ. SIGUE.'], 1);
   } else if (def.id === 'juan' && !world.printed) {
+    sfx('error');
     const msg = world.step < 4
       ? 'PRIMERO CONSIGUE CONFIRMACIÓN DEL INICIO DEL PROYECTO CON CRISMERY.'
       : world.step === 4
@@ -954,6 +1132,7 @@ function interact() {
         : 'IMPRIME LAS LÁMINAS.\nNO LO VEO EN PANTALLA.';
     openDialogue(def.name, [msg], 1);
   } else if (chainMember) {
+    sfx('error');
     openDialogue(def.name, ['TODAVÍA NO.\n' + (currentObjective() ? currentObjective().task : '')], 1);
   } else if (def.id === 'aracelis') {
     const dd = aracelisDialogue();
@@ -967,6 +1146,7 @@ function startChainStep(p, cost) {
   const def = p.def, want = CHAIN[world.step];
   if (!want || want.id !== def.id) return;
   if (def.id === 'juan' && !world.printed) {
+    sfx('error');
     openDialogue(def.name + ' — ' + def.role,
       ['ANTES DE VERLO CONMIGO, VE A LA IMPRESORA.\nTRÁEME LAS LÁMINAS IMPRESAS.'], 1);
     return;
@@ -979,9 +1159,10 @@ function startChainStep(p, cost) {
   world.dlg.onEnd = () => {
     // Dialogue costs count against the deadline. Closing the final conversation
     // at 18:00 or later is too late, even if it began before the cutoff.
-    if (world.clock >= CLOCK_END) { world.over = 2; return; }
+    if (world.clock >= CLOCK_END) { world.over = 2; sfx('lose'); updateAudio(0); return; }
     p.signed = true; world.step++;
-    if (isLast) { world.over = 3; world.postT = 0; return; }
+    if (isLast) { world.over = 3; world.postT = 0; audio.postCue = false; sfx('success'); return; }
+    sfx(want.id === 'gaviota' ? 'task' : 'signature');
     world.sparks.push({ x: p.x, y: p.y - 10, life: 1 });
     showHint(completionHint(want), 5);
   };
@@ -993,12 +1174,21 @@ function showHint(t, d) { world.hint = t; world.hintT = d; }
 // the same 2 extra game-minutes it costs at the machine (charged only if
 // you say yes -- the base interruption/chat cost is charged separately).
 function aracelisDialogue() {
+  if (world.boost > 0) {
+    return {
+      pages: ['MI HIJO, CUIDADO DONDE PISAS.\nQUE ACABO DE SUAPEAR AHÍ.',
+              'YA TIENES CAFÉ. TERMINA ESE PRIMERO.'],
+      choices: null,
+    };
+  }
   return {
     pages: ['MI HIJO, CUIDADO DONDE PISAS.\nQUE ACABO DE SUAPEAR AHÍ.', '¿QUIERES UN CAFÉ?'],
     choices: [
       { label: 'SÍ, GRACIAS', run: () => {
+          if (world.boost > 0) { openDialogue('ARACELIS DEL ROSARIO', ['TERMINA ESE CAFÉ PRIMERO, MI HIJO.'], 0); return; }
           if (world.coffee <= 0) { openDialogue('ARACELIS DEL ROSARIO', ['SE ACABÓ EL CAFÉ. LO SIENTO, MI HIJO.'], 0); return; }
           world.coffee--; world.boost = 18; world.clock += 2;
+          sfx('coffee');
           openDialogue('ARACELIS DEL ROSARIO', ['TOMA, CON CUIDADO QUE ESTÁ CALIENTE.'], 0);
         } },
       { label: 'NO, GRACIAS', run: () => {} },
@@ -1026,15 +1216,25 @@ function update(dt) {
     if (world.wet[i].life <= 0) world.wet.splice(i, 1);
   }
 
+  // The title card is a true start gate: no clock, movement, NPCs or mission
+  // progress until the player chooses Jugar and the short fade completes.
+  if (!world.started) { updateAudio(dt); return; }
+  if (world.startFade < START_FADE) {
+    world.startFade = Math.min(START_FADE, world.startFade + dt);
+    updateAudio(dt); return;
+  }
+
   if (world.over === 3) {
     world.postT += dt;
-    if (world.postT >= 7) world.over = 1;
+    if (!audio.postCue && world.postT >= 4.15) { audio.postCue = true; sfx('door'); }
+    if (world.postT >= 7) { world.over = 1; sfx('win'); }
+    updateAudio(dt);
     return;
   }
   if (world.over) return;
-  if (!world.dlg && world.t > INTRO_LOCK) {
+  if (!world.dlg && gameReady()) {
     world.clock += dt / SEC_PER_MIN;
-    if (world.clock >= CLOCK_END) { world.over = 2; return; }
+    if (world.clock >= CLOCK_END) { world.over = 2; sfx('lose'); updateAudio(0); return; }
   }
 
   // headphones
@@ -1048,7 +1248,7 @@ function update(dt) {
 
   // movement (locked while a dialogue is open, or during the intro banner)
   let ix = 0, iy = 0;
-  if (!world.dlg && world.t > INTRO_LOCK) {
+  if (!world.dlg && gameReady()) {
     if (keys['a'] || keys['arrowleft']) ix -= 1;
     if (keys['d'] || keys['arrowright']) ix += 1;
     if (keys['w'] || keys['arrowup']) iy -= 1;
@@ -1068,6 +1268,7 @@ function update(dt) {
     else player.face = player.vy < 0 ? 'up' : 'down';
     player.anim += dt * (world.boost > 0 ? 10 : 7);
   }
+  updateAudio(dt);
 
   // roamers
   for (const p of world.people) {
@@ -1764,26 +1965,31 @@ function drawOverlays() {
       const objectiveLines = wrapText(objectiveLabel(cur), bw - 32, 1);
       objectiveLines.forEach((line, i) => text(mctx, line, (VW - tw1(line)) / 2, by + 96 + i * 9, P.ink));
     }
-    const p2 = window.innerWidth <= 640 ? 'BOTÓN PAUSA PARA CONTINUAR' : 'P PARA CONTINUAR';
+    const p2 = window.innerWidth <= 640 ? 'BOTÓN PAUSA PARA CONTINUAR' : 'P / ESC PARA CONTINUAR';
     text(mctx, p2, (VW - tw1(p2)) / 2, 198, '#d9d2ff');
     return;
   }
-  if (world.t < INTRO_LOCK) {
-    const a = world.t < 3 ? 1 : 1 - (world.t - 3) / 1.6;
+  if (!world.started || !gameReady()) {
+    const a = world.started ? 1 - world.startFade / START_FADE : 1;
     mctx.globalAlpha = a;
-    mctx.fillStyle = 'rgba(247,245,242,0.92)'; mctx.fillRect(0, 78, VW, 76);
-    mctx.fillStyle = P.violet; mctx.fillRect(0, 78, VW, 2); mctx.fillRect(0, 152, VW, 2);
+    mctx.fillStyle = 'rgba(247,245,242,0.97)'; mctx.fillRect(0, 0, VW, VH);
+    mctx.fillStyle = P.violet; mctx.fillRect(22, 20, 4, 196);
     const t1 = 'LUXIA LABS', t2 = 'DÍA DE ENTREGA';
-    text(mctx, t1, (VW - tw1(t1) * 3) / 2, 88, P.violet, 3);
-    text(mctx, t2, (VW - tw1(t2) * 2) / 2, 110, P.ink, 2);
+    text(mctx, t1, (VW - tw1(t1) * 3) / 2, 32, P.violet, 3);
+    text(mctx, t2, (VW - tw1(t2) * 2) / 2, 63, P.ink, 2);
+
+    pill(mctx, 49, 91, VW - 98, 46, 'rgba(255,255,255,.88)');
     const t3 = 'DAILY · SEIS FIRMAS · ENTREGA ANTES DE LAS 18:00';
-    text(mctx, t3, (VW - tw1(t3)) / 2, 128, P.dim);
-    const t4 = window.innerWidth <= 640
-      ? 'TOCA Y ARRASTRA · E HABLAR · AURICULARES · BOTÓN PAUSA'
-      : 'WASD MOVER · E HABLAR · ESPACIO AURICULARES · P PAUSA';
-    text(mctx, t4, (VW - tw1(t4)) / 2, 140, P.dim);
-    text(mctx, 'BUILD ' + BUILD, VW - tw1('BUILD ' + BUILD) - 6, 149, P.dim);
+    text(mctx, t3, (VW - tw1(t3)) / 2, 102, P.ink);
+    const deadline = 'TU RELOJ EMPIEZA CUANDO PULSES JUGAR';
+    text(mctx, deadline, (VW - tw1(deadline)) / 2, 119, P.violet);
+    const controls = window.innerWidth <= 640
+      ? ['ARRASTRA PARA MOVER · E HABLAR · AURICULARES', 'SONIDO · PAUSA · REINICIO EN LOS BOTONES']
+      : ['WASD MOVER · E HABLAR · ESPACIO AURICULARES', 'P/ESC PAUSA · M SONIDO · R REINICIAR'];
+    controls.forEach((line, i) => text(mctx, line, (VW - tw1(line)) / 2, 150 + i * 13, P.dim));
+    text(mctx, 'BUILD ' + BUILD, VW - tw1('BUILD ' + BUILD) - 8, 224, P.dim);
     mctx.globalAlpha = 1;
+    return;
   }
   if (!world.over) return;
   if (world.over === 3) { drawClientArrival(); return; }
@@ -1900,28 +2106,37 @@ function drawClientArrival() {
 
 // ---------- INPUT ----------
 function doRestart() {
+  ensureAudio(); sfx('resume');
   buildWorld(); bakeMini(); world.t = 0;
   cam.x = player.x - VW / 2; cam.y = player.y - VH / 2;
 }
 function doPauseToggle() {
-  if (world.t > INTRO_LOCK && !world.over) world.paused = !world.paused;
+  ensureAudio();
+  if (gameReady() && !world.over) {
+    world.paused = !world.paused;
+    updatePauseAudioButton();
+    sfx(world.paused ? 'pause' : 'resume'); updateAudio(0);
+  }
 }
 function doInteract() {
-  if (world.paused || world.t <= INTRO_LOCK) return;
+  if (world.paused || !gameReady()) return;
   interact();
 }
 function doHeadphoneToggle() {
-  if (world.paused || world.t <= INTRO_LOCK) return;
+  if (world.paused || !gameReady()) return;
   if (world.dlg) { if (onLastPage() && world.dlg.choices) selectChoice(); else advanceDialogue(); }
-  else if (player.hopho > 0) player.hopho = 0;
-  else if (player.phCharge > .12) player.hopho = 1;
+  else if (player.hopho > 0) { player.hopho = 0; sfx('headphones'); }
+  else if (player.phCharge > .12) { player.hopho = 1; sfx('headphones'); }
 }
 window.addEventListener('keydown', e => {
+  ensureAudio();
   const k = e.key.toLowerCase();
-  if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'e', 'p'].includes(k)) e.preventDefault();
+  if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'e', 'p', 'escape'].includes(k)) e.preventDefault();
+  if (!world.started && ['enter', ' ', 'e'].includes(k)) { beginGame(); keys[k] = true; return; }
   if (k === 'r') { doRestart(); keys[k] = true; return; }
-  if (k === 'p') { doPauseToggle(); return; }
-  if (world.paused || world.t <= INTRO_LOCK) { keys[k] = true; return; }   // frozen: track the key, do nothing else
+  if (k === 'm' && !keys[k]) { toggleSound(); keys[k] = true; return; }
+  if ((k === 'p' || k === 'escape') && !keys[k]) { keys[k] = true; doPauseToggle(); return; }
+  if (world.paused || !gameReady()) { keys[k] = true; return; }   // frozen until start fade completes
   if (onLastPage() && world.dlg.choices &&
       ['a', 'd', 'arrowleft', 'arrowright', 'w', 's', 'arrowup', 'arrowdown'].includes(k)) {
     cycleChoice(1);          // binary choice: either key just toggles the other option
@@ -1946,7 +2161,7 @@ window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; e
 function bindTapButton(id, fn) {
   const el = document.getElementById(id);
   if (!el) return;
-  el.addEventListener('touchstart', e => { e.preventDefault(); fn(); }, { passive: false });
+  el.addEventListener('touchstart', e => { e.preventDefault(); ensureAudio(); fn(); }, { passive: false });
 }
 const JOY_R = 36;   // max knob travel in px, matches the CSS knob/base sizing
 function bindJoystick() {
@@ -1963,6 +2178,7 @@ function bindJoystick() {
   }
   zone.addEventListener('touchstart', e => {
     e.preventDefault();
+    ensureAudio();
     if (touchId !== null) return;               // one finger drives the stick
     const t = e.changedTouches[0], r = zone.getBoundingClientRect();
     touchId = t.identifier; ox = t.clientX - r.left; oy = t.clientY - r.top; cycled = false;
@@ -1998,8 +2214,23 @@ function bindTouch() {
   bindJoystick();
   bindTapButton('tp-e', doInteract);
   bindTapButton('tp-ph', doHeadphoneToggle);
+  bindTapButton('tp-m', toggleSound);
   bindTapButton('tp-p', doPauseToggle);
   bindTapButton('tp-r', doRestart);
+}
+function bindPauseAudioButton() {
+  const button = document.getElementById('pause-mute');
+  if (!button) return;
+  button.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation(); ensureAudio(); toggleSound();
+  });
+}
+function bindStartButton() {
+  const button = document.getElementById('start-button');
+  if (!button) return;
+  button.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation(); beginGame();
+  });
 }
 
 // ---------- LOOP ----------
@@ -2017,14 +2248,14 @@ function frame(now) {
   render();
 }
 function boot() {
-  initGfx(); buildWorld(); bakeMini(); bindTouch();
+  initGfx(); buildWorld(); bakeMini(); bindTouch(); bindPauseAudioButton(); bindStartButton(); updateSoundButton();
   cam.x = Math.max(0, Math.min(MAPW * TS - VW, player.x - VW / 2));
   cam.y = Math.max(0, Math.min(MAPH * TS - VH, player.y - VH / 2));
   requestAnimationFrame(frame);
 }
 boot();
 try { out.focus(); } catch (e) { }
-out.addEventListener('pointerdown', () => out.focus());
+out.addEventListener('pointerdown', () => { ensureAudio(); out.focus(); });
 
 </script>
 </body>
