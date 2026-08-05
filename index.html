@@ -41,9 +41,10 @@
   /* Controls live below the canvas, in normal page flow -- never over the
      game, so they can't cover a dialogue box. */
   #touchpad{
-    display:flex; align-items:center; justify-content:space-between;
+    display:none; align-items:center; justify-content:space-between;
     width:100%; max-width:420px; margin-top:4px;
   }
+  @media(max-width:640px){ #touchpad{display:flex} }
   #touchpad button{
     touch-action:none; font:400 11px ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     letter-spacing:.04em; color:var(--ink); background:rgba(247,245,242,.92);
@@ -76,6 +77,10 @@
 
   .tp-mid{ display:flex; flex-direction:column; gap:6px; }
   .tp-small{ width:34px; height:26px; font-size:10px; }
+  .pause-icon{
+    display:inline-block; width:12px; height:13px; vertical-align:middle;
+    background:linear-gradient(90deg,currentColor 0 4px,transparent 4px 8px,currentColor 8px 12px);
+  }
   .tp-right{ display:flex; align-items:center; gap:8px; }
   .tp-ph{ width:36px; height:36px; border-radius:50%; font-size:15px; }
   .tp-e{ width:54px; height:54px; border-radius:50%; font-size:15px; }
@@ -91,7 +96,7 @@
     <div id="tp-joyknob" class="tp-joyknob"></div>
   </div>
   <div class="tp-mid">
-    <button id="tp-p" class="tp-small" aria-label="Pausa">II</button>
+    <button id="tp-p" class="tp-small" aria-label="Pausa"><span class="pause-icon" aria-hidden="true"></span></button>
     <button id="tp-r" class="tp-small" aria-label="Reiniciar">R</button>
   </div>
   <div class="tp-right">
@@ -101,6 +106,7 @@
 </div>
 <div class="bar">
   <span class="t">Luxia Labs · Hora de entrega</span>
+  <span>v0.3</span>
   <span class="sep">|</span>
   <span class="desk"><kbd>WASD</kbd> caminar <b>·</b> <kbd>E</kbd> hablar <b>·</b> <kbd>Espacio</kbd> auriculares <b>·</b> <kbd>R</kbd> reiniciar</span>
   <span class="touch">toca y arrastra para caminar <b>·</b> E hablar <b>·</b> auriculares, pausa y reinicio abajo</span>
@@ -116,6 +122,7 @@
 
 const VW = 384, VH = 240, TS = 16;
 const MAPW = 33, MAPH = 44;          // world = 528 x 704
+const BUILD = '0.3';
 
 // ---------- PALETTE ----------
 // Sampled off the two office photos: warm grey porcelain, white paint,
@@ -266,16 +273,16 @@ const HAIR = { black:'#1e1823', dark:'#332318', brown:'#54371f', castano:'#7a4e2
 // bd build (-1 slim, 0, 1 stocky) | tl height (-1 short, 0, 1 tall)
 // kind sit|roam | step = position in the sign-off chain
 
-const PLAYER_SPEC = { sk:'med', hs:'taper', hc:'dark', fh:'none', gl:0,
+const PLAYER_SPEC = { sk:'med', hs:'taperfade', hc:'dark', fh:'none', gl:0,
   top:'#4a5a7a', bot:'#3b3f4a', sh:'#e8e6e2', st:'casual', bd:0, tl:1 };
 
 const PEOPLE = [
   // ---- the sign-off chain, in order ----
   { id:'gaviota', name:'GAVIOTA DE ÓLEO', role:'SCRUM MASTER', step:1,
     tx:10, ty:19, kind:'roam', route:[[7,28],[7,40],[23,40],[23,28]], speed:26,
-    spec:{ sk:'brown', hs:'bob', hc:'black', fh:'none', gl:0, top:'#2f3a52', bot:'#2f3a52', sh:'#23232b', st:'dress', bd:-1, tl:0 },
+    spec:{ sk:'brown', hs:'bob', hc:'black', fh:'none', gl:0, top:'#b82e8a', bot:'#73205f', sh:'#2d2030', st:'dress', bd:-1, tl:0 },
     lines:['¿Y TU DAILY? LLEVO 20 MINUTOS BUSCÁNDOTE.',
-           'YA MODELASTE EL NIVEL 3? HOY DEBES TERMINAR LA DOCUMENTACIÓN.\nSI TIENES ALGUN IMPEDIMENTO ME AVISAS.',
+           '¿YA MODELISTE EL NIVEL 3? HOY DEBES TERMINAR LA DOCUMENTACIÓN.\nSI TIENES ALGÚN IMPEDIMENTO ME AVISAS.',
            'TUS TAREAS ESTÁN EN MONDAY. AHORA SÍ PUEDES TRABAJAR.'],
     chat:'OYE. NO TE HAGAS. FALTA TU DAILY.' },
 
@@ -296,7 +303,7 @@ const PEOPLE = [
     chat:'UN PLANO QUE HAY QUE EXPLICAR ES UN PLANO INCOMPLETO.' },
 
   { id:'crismery', name:'CRISMERY NÚÑEZ', role:'GENERAL MANAGER', step:4,
-    tx:19, ty:10, kind:'sit', face:'down',
+    tx:19, ty:10, kind:'sit', face:'left',
     spec:{ sk:'light', hs:'bob', hc:'black', fh:'none', gl:0, top:'#e9e5df', bot:'#2c3242', sh:'#23232b', st:'business', bd:1, tl:0 },
     lines:['SIN EL AVANCE INICIAL NO SE EJECUTA LA TAREA. POLÍTICAS DE LA EMPRESA.',
            'YA ENTRÓ EL PAGO, SOLICITA LA COTIZACIÓN AL SUPLIDOR.\nQUE HAGA UN DESCUENTO.',
@@ -304,23 +311,23 @@ const PEOPLE = [
     chat:'TODO GASTO TIENE UN NOMBRE Y UN RESPONSABLE.' },
 
   { id:'laura', name:'LAURA MARTÍNEZ', role:'CO-PRINCIPAL ARCHITECT', step:5,
-    tx:29, ty:21, kind:'sit', face:'right',
+    tx:29, ty:21, kind:'sit', face:'left',
     spec:{ sk:'light', hs:'long', hc:'castano', fh:'none', gl:0, top:'#c9b8a0', bot:'#4a4f5c', sh:'#e8e6e2', st:'business', bd:0, tl:0 },
     lines:['CON UNA SOLA OPCIÓN DE FACHADA ES SUFICIENTE.\nAHORA TENGO QUE REVISAR LAS PLANTAS.',
-           'DIBUJA LA PROYECCIÓN DE LAS VIGAS.\nAHORA SI, LAS PLANTAS ESTÁN NÍTIDAS.',
+           'DIBUJA LA PROYECCIÓN DE LAS VIGAS.\nAHORA SÍ, LAS PLANTAS ESTÁN NÍTIDAS.',
            'ASÍ SÍ. FIRMADO.'],
     chat:'LA ESCALA SE SIENTE ANTES DE MEDIRSE.' },
 
   { id:'juan', name:'JUAN RAÚL RUIZ', role:'COO & PRINCIPAL', step:6,
-    tx:29, ty:31, kind:'sit', face:'right',
+    tx:29, ty:31, kind:'sit', face:'left',
     spec:{ sk:'tan', hs:'slick', hc:'black', fh:'none', gl:0, top:'#2b3550', bot:'#262a35', sh:'#23232b', st:'business', bd:0, tl:-1 },
     lines:['NO PUEDEN PRESENTAR AL CLIENTE SI YO NO HE APROBADO',
            '...ARREGLA LA FACHADA. Y HAZ 2 OPCIONES MÁS.',
-           'FIRMADO. AHORA SI A ROMPER.'],
+           'FIRMADO. AHORA SÍ, A ROMPER.'],
     chat:'TODO SE NEGOCIA. HASTA EL PLAZO.' },
 
   { id:'gerardo', name:'GERARDO PÉREZ', role:'CEO', step:7,
-    tx:29, ty:40, kind:'sit', face:'right',
+    tx:29, ty:40, kind:'sit', face:'left',
     spec:{ sk:'brown', hs:'short', hc:'black', fh:'none', gl:0, top:'#5f6f88', bot:'#31353f', sh:'#4a3a2c', st:'bizcas', bd:0, tl:1 },
     lines:['¡ESTO ES LO QUE YO QUIERO VER!',
            '¿SABES QUÉ PODRÍAMOS HACER? UNA TORRE.\nNO. TRES TORRES. Y UN PARQUE.',
@@ -343,12 +350,12 @@ const PEOPLE = [
 
   { id:'harold', name:'HAROLD ORTIZ', role:'LEAD ARCHITECT',
     tx:18, ty:34, kind:'roam', route:[[22,17],[22,38],[10,38],[10,27]], speed:28,
-    spec:{ sk:'dark', hs:'short', hc:'black', fh:'lightbeard', fc:'black', gl:0, top:'#a8613f', bot:'#3d434f', sh:'#e8e6e2', st:'casual', bd:1, tl:0 },
+    spec:{ sk:'dark', hs:'short', hc:'black', fh:'lightbeard', fc:'black', gl:0, top:'#a8613f', bot:'#3d434f', sh:'#e8e6e2', st:'casual', bd:2, tl:0 },
     chat:'MÍO, MIRA ESTE MEME. ES DE ARQUITECTOS.\nTE VA A DOLER.' },
 
   { id:'aracelis', name:'ARACELIS DEL ROSARIO', role:'CONSERJE',
     tx:30, ty:12, kind:'roam', route:[[30,12],[24,15],[24,33],[7,33],[7,20]], speed:22, mop:true,
-    spec:{ sk:'brown', hs:'long', hc:'black', fh:'none', gl:0, top:'#6ba38f', bot:'#4a4f5c', sh:'#e8e6e2', st:'casual', bd:0, tl:0 },
+    spec:{ sk:'brown', hs:'long', hc:'black', fh:'none', gl:0, top:'#202126', bot:'#101116', sh:'#45474d', st:'casual', bd:0, tl:0 },
     chat:'MI HIJO, CUIDADO DONDE PISAS.\nQUE ACABO DE SUAPEAR AHÍ.' },
 
   // ---- seated, at their real desks ----
@@ -356,7 +363,7 @@ const PEOPLE = [
     spec:{ sk:'light', hs:'wavy', hc:'castano', fh:'none', gl:0, top:'#5c5a72', bot:'#5c5a72', sh:'#23232b', st:'dress', bd:1, tl:1 },
     chat:'LA EXPERIENCIA DEL USUARIO EMPIEZA EN LA ACERA.\nNO EN EL LOBBY.' },
 
-  { id:'eliseo', name:'ELISEO MONTOYA', role:'DESIGN INNOVATION MANAGER', tx:8, ty:36, kind:'sit', face:'left',
+  { id:'eliseo', name:'ELISEO MONTOYA', role:'DESIGN INNOVATION MANAGER', tx:8, ty:36, kind:'sit', face:'right',
     spec:{ sk:'tan', hs:'slick', hc:'black', fh:'candado', fc:'black', gl:1, top:'#8f9aa8', bot:'#343a48', sh:'#3a3028', st:'bizcas', bd:0, tl:0 },
     chat:'¿ESTÁS USANDO LA IA NUEVA?\n...CONÉCTALA CON REVIT Y SUBE LOS ARCHIVOS AL DRIVE' },
 
@@ -386,19 +393,19 @@ const PEOPLE = [
 
   { id:'harolddesk', name:'ESCRITORIO DE HAROLD', role:'', tx:20, ty:34, kind:'none' },
 
-  { id:'lesly', name:'LESLY NÚÑEZ', role:'CONTABILIDAD', tx:14, ty:10, kind:'sit', face:'down',
+  { id:'lesly', name:'LESLY NÚÑEZ', role:'CONTABILIDAD', tx:14, ty:10, kind:'sit', face:'right',
     spec:{ sk:'brown', hs:'bob', hc:'black', fh:'none', gl:0, top:'#d9a24f', bot:'#4a4f5c', sh:'#f7f5f2', st:'casual', bd:0, tl:0 },
     chat:'AH, TE CUENTO: LO DE LA FACTURA DE AYER,\nRESULTA QUE... ¿TIENES CINCO MINUTOS?' },
 
   { id:'irina', name:'IRINA', role:'COMERCIAL', tx:12, ty:40, kind:'sit', face:'down',
-    spec:{ sk:'light', hs:'semi', hc:'green', hr:'black', fh:'none', gl:0, top:'#4f8c8c', bot:'#3a4150', sh:'#f2f0ec', st:'sport', bd:0, tl:0 },
+    spec:{ sk:'light', hs:'long', hc:'green', fh:'none', gl:0, top:'#4f8c8c', bot:'#3a4150', sh:'#f2f0ec', st:'sport', bd:0, tl:0 },
     chat:'¿VISTE EL ATARDECER DESDE LA TERRAZA?\nTIENES QUE VERLO. HOY. EN SERIO.' },
 
-  { id:'pas1', name:'CHICA 1', role:'PASANTE', tx:6, ty:39, kind:'sit', face:'right',
+  { id:'pas1', name:'CHICA 1', role:'PASANTE', tx:6, ty:39, kind:'sit', face:'left',
     spec:{ sk:'tan', hs:'long', hc:'black', fh:'none', gl:0, top:'#8fa8c4', bot:'#3b4150', sh:'#f2f0ec', st:'casual', bd:-1, tl:0 },
     chat:'PERDÓN... ¿ESTO ES UN MURO O UNA VENTANA?' },
 
-  { id:'pas2', name:'CHICA 2', role:'PASANTE', tx:6, ty:41, kind:'sit', face:'right',
+  { id:'pas2', name:'CHICA 2', role:'PASANTE', tx:6, ty:41, kind:'sit', face:'left',
     spec:{ sk:'light', hs:'bob', hc:'brown', fh:'none', gl:1, top:'#c4a8c4', bot:'#3d434f', sh:'#f2f0ec', st:'casual', bd:1, tl:0 },
     chat:'LLEVO TRES HORAS BUSCANDO ESA FAMILIA DE REVIT.\nNO EXISTE, ¿VERDAD?' },
 
@@ -444,11 +451,36 @@ function objectiveLabel(o) {
 function completedSignatures() {
   return CHAIN.filter(c => c.sig && world.people.some(p => p.def.id === c.id && p.signed)).length;
 }
+function dailyComplete() {
+  const gaviota = world.people.find(p => p.def.id === 'gaviota');
+  return !!(gaviota && gaviota.signed);
+}
+function completionHint(done) {
+  const complete = done.id === 'gaviota' ? 'DAILY LISTO' : 'FIRMA ' + done.sig + '/6 LISTA';
+  const next = currentObjective();
+  return complete + (next ? '\nSIGUIENTE: ' + objectiveLabel(next) : '');
+}
+function gaviotaGuidance() {
+  const lines = {
+    1:'HÉCTOR ESTÁ EN EL TALLER.\nLLEVA EL DETALLE DE MURO PARA LA REVISIÓN TÉCNICA.',
+    2:'AHORA BUSCA A CAMILO EN EL TALLER.\nÉL REVISA LA PROPUESTA COMO LEAD.',
+    3:'VE A ADMIN Y HABLA CON CRISMERY.\nNECESITAS SU CONFIRMACIÓN PARA CONTINUAR.',
+    4:world.printed
+      ? 'LA IMPRESIÓN YA ESTÁ LISTA.\nSIGUE CON LAURA EN EL ALA EJECUTIVA.'
+      : 'SIGUE CON LAURA EN EL ALA EJECUTIVA.\nDESDE AHORA TAMBIÉN PUEDES USAR LA IMPRESORA.',
+    5:world.printed
+      ? 'LLEVA LAS LÁMINAS IMPRESAS A JUAN RAÚL, EN LA OFICINA DEL COO.'
+      : 'ANTES DE JUAN RAÚL, USA LA IMPRESORA DEL TALLER.\nNO ACEPTARÁ VERLO SOLO EN PANTALLA.',
+    6:'TE FALTA LA FIRMA FINAL DE GERARDO.\nESTÁ EN LA OFICINA DEL CEO.',
+    7:'YA TIENES LAS SEIS FIRMAS.\nENTRÉGASELO A MARIELMI EN CONFERENCIAS.',
+  };
+  return [lines[world.step] || 'TODO LISTO. AHORA RESPIRA... SI TE DA TIEMPO.'];
+}
 
 // Hints tied to the first time you reach a place.
 const ZONES = [
-  { tx:20, ty:29, r:26, hint:'FLECHAS PARA CAMINAR  ·  E PARA HABLAR' },
-  { tx:17, ty:39, r:34, hint:'ESPACIO: AURICULARES. NADIE TE INTERRUMPE...\nPERO TAMPOCO TE OYEN.' },
+  { tx:20, ty:29, r:26, hint:'MUÉVETE PARA CAMINAR  ·  E PARA HABLAR' },
+  { tx:17, ty:39, r:34, hint:'AURICULARES: NADIE TE INTERRUMPE...\nPERO TAMPOCO TE OYEN.' },
   { tx:32, ty:12, r:40, hint:'E EN LA CAFETERA: CAFÉ. CAMINAS MÁS RÁPIDO.' },
   { tx:27, ty:24, r:30, hint:'ALA EJECUTIVA. TRES PUERTAS, TRES FIRMAS.' },
 ];
@@ -482,7 +514,8 @@ const HAIRSTYLE = {
   curly:    [[-3,5,4],[-2,4,6],[-1,3,8],[0,3,8],[1,3,1],[1,10,1]],
   tousled:  [[-3,5,2],[-3,8,1],[-2,4,6],[-1,3,8],[0,3,8],[1,3,1],[1,10,1]],
   taper:    [[-3,4,6],[-2,4,6],[-1,4,6],[0,3,8],[1,3,1],[1,10,1]],
-  afro:     [[-4,4,6],[-3,3,8],[-2,2,10],[-1,2,10],[0,2,10],[1,2,1],[1,11,1],[2,2,1],[2,11,1]],
+  taperfade:[[-1,5,4],[0,4,6],[1,3,8],[2,3,2],[2,9,2]],
+  afro:     [[-2,5,4],[-1,3,8],[0,2,10],[1,2,10],[2,3,8],[3,3,1],[3,10,1],[4,3,1],[4,10,1]],
   semi:     [[-2,4,6],[-1,3,8],[0,3,8],[1,3,1],[1,10,1],[2,3,1],[2,10,1],[3,3,1],[3,10,1],[4,3,1],[4,10,1]],
   bobshort: [[-2,4,6],[-1,3,8],[0,3,8],[1,3,1],[1,10,1],[2,3,1],[2,10,1],[3,3,1],[3,10,1]],
   bob:      [[-2,4,6],[-1,3,8],[0,2,10],[1,2,1],[1,11,1],[2,2,1],[2,11,1],[3,2,1],[3,11,1],[4,2,2],[4,10,2]],
@@ -907,7 +940,7 @@ function interact() {
     } else {
       world.printed = true;
       openDialogue('IMPRESORA', ['IMPRIMIENDO...', 'LÁMINAS LISTAS.\nYA PUEDES LLEVÁRSELAS A JUAN RAÚL.'], 2);
-      world.dlg.onEnd = () => showHint(objectiveLabel(currentObjective()), 4);
+      world.dlg.onEnd = () => showHint('IMPRESIÓN LISTA\nSIGUIENTE: ' + objectiveLabel(currentObjective()), 5);
     }
     return;
   }
@@ -920,7 +953,7 @@ function interact() {
   }
   const chainMember = CHAIN.some(c => c.id === def.id);
   if (chainMember && p.signed) {
-    openDialogue(def.name, [def.id === 'gaviota' ? 'YA HICISTE TU DAILY. SIGUE.' : 'YA TE FIRMÉ. SIGUE.'], 1);
+    openDialogue(def.name, def.id === 'gaviota' ? gaviotaGuidance() : ['YA TE FIRMÉ. SIGUE.'], 1);
   } else if (def.id === 'juan' && !world.printed) {
     const msg = world.step < 4
       ? 'PRIMERO CONSIGUE CONFIRMACIÓN DEL INICIO DEL PROYECTO CON CRISMERY.'
@@ -952,10 +985,13 @@ function startChainStep(p, cost) {
   const isLast = world.step === CHAIN.length - 1;
   openDialogue(def.name + ' — ' + def.role, pages, cost);
   world.dlg.onEnd = () => {
+    // Dialogue costs count against the deadline. Closing the final conversation
+    // at 18:00 or later is too late, even if it began before the cutoff.
+    if (world.clock >= CLOCK_END) { world.over = 2; return; }
     p.signed = true; world.step++;
     if (isLast) { world.over = 3; world.postT = 0; return; }
     world.sparks.push({ x: p.x, y: p.y - 10, life: 1 });
-    showHint(objectiveLabel(currentObjective()), 4);
+    showHint(completionHint(want), 5);
   };
 }
 
@@ -1208,7 +1244,7 @@ function render() {
   // --- daylight shafts
   mctx.save();
   for (const wn of WINDOWS) {
-    mctx.globalAlpha = .11; mctx.fillStyle = '#fff6e2';
+    mctx.globalAlpha = .10 + Math.sin(world.t * .35 + wn.x) * .015; mctx.fillStyle = '#fff6e2';
     if (wn.side === 'E') {
       const bx = wn.x * TS - c.x, by = wn.y * TS - c.y, bh = wn.h * TS;
       mctx.beginPath();
@@ -1261,6 +1297,8 @@ function render() {
   items.sort((a, b) => a.y - b.y);
   for (const it of items) it.d();
 
+  drawTerraceBreeze(c);
+
   // --- overhead: track light and duct, from photo 2
   for (const ce of CEILING) {
     const px = ce.x * TS - c.x, py = ce.y * TS - c.y;
@@ -1303,8 +1341,16 @@ function render() {
       const an = i / 8 * 6.2832;
       mctx.fillRect(px + Math.cos(an) * r | 0, py + Math.sin(an) * r * .6 | 0, 2, 2);
     }
+    mctx.fillStyle = '#ffffff';
+    mctx.fillRect(px - 1, py - 4, 2, 8); mctx.fillRect(px - 4, py - 1, 8, 2);
     mctx.globalAlpha = 1;
   }
+
+  // Subtle screen-space depth keeps the pale floor from reading completely flat.
+  mctx.globalAlpha = .055; mctx.fillStyle = P.ink;
+  mctx.fillRect(0, 0, VW, 3); mctx.fillRect(0, VH - 4, VW, 4);
+  mctx.fillRect(0, 0, 3, VH); mctx.fillRect(VW - 3, 0, 3, VH);
+  mctx.globalAlpha = 1;
 
   drawHUD();
   if (world.dlg) drawDialogue();
@@ -1312,6 +1358,25 @@ function render() {
 
   octx.imageSmoothingEnabled = false;
   octx.drawImage(main, 0, 0, VW * scale, VH * scale);
+}
+
+function drawTerraceBreeze(c) {
+  const left = 22 * TS, top = 2 * TS, width = 10 * TS, height = 5 * TS;
+  if (left - c.x > VW || left + width - c.x < 0 || top - c.y > VH || top + height - c.y < 0) return;
+  for (let i = 0; i < 8; i++) {
+    const travel = (world.t * (17 + i % 3 * 4) + i * 29) % (width + 34) - 17;
+    const lift = Math.sin(world.t * 1.8 + i * 1.7) * 5;
+    const px = Math.round(left + travel - c.x), py = Math.round(top + 13 + (i * 17) % (height - 20) + lift - c.y);
+    const edgeFade = Math.min(1, travel / 18, (width - travel) / 18);
+    mctx.globalAlpha = Math.max(0, edgeFade) * .42;
+    mctx.fillStyle = '#eef7e9';
+    mctx.fillRect(px, py, 7, 1); mctx.fillRect(px + 8, py - 1, 5, 1); mctx.fillRect(px + 14, py, 3, 1);
+    if (i % 2 === 0) {
+      mctx.fillStyle = i % 4 === 0 ? '#d3b45f' : '#8fba70';
+      mctx.fillRect(px + 9, py + 2, 2, 2); mctx.fillRect(px + 11, py + 3, 1, 1);
+    }
+  }
+  mctx.globalAlpha = 1;
 }
 
 function drawGlass(px, py, tx, ty) {
@@ -1330,6 +1395,12 @@ function drawGlass(px, py, tx, ty) {
   // continuous pair of lines along the run.
   if (vert) { mctx.fillRect(px, py, 2, TS); mctx.fillRect(px + TS - 2, py, 2, TS); }
   else { mctx.fillRect(px, py, TS, 2); mctx.fillRect(px, py + TS - 2, TS, 2); }
+  if ((tx * 3 + ty) % 5 === 0) {
+    mctx.globalAlpha = .28; mctx.fillStyle = '#ffffff';
+    if (vert) { mctx.fillRect(px + 5, py + 3, 1, 7); mctx.fillRect(px + 8, py + 6, 1, 5); }
+    else { mctx.fillRect(px + 3, py + 5, 7, 1); mctx.fillRect(px + 6, py + 8, 5, 1); }
+    mctx.globalAlpha = 1;
+  }
   if (world.mat[ty][tx] === 'glassClean') return;    // this run has no sticky notes
   // sticky notes and marker, straight off the real partition
   const h = (tx * 31 + ty * 17) % 11;
@@ -1392,13 +1463,19 @@ function drawFurn(f, c) {
       for (let i = 2; i < f.w; i += 3) R(px + i * TS - 4, py + 2, 3, h - 5, P.white);  // pedestals
       const mony = f.h > 1 ? py + h / 2 - 3 : py + 1;
       for (let i = 0; i < f.w - 1; i += 3) {                                          // monitors
+        const phase = (Math.floor(world.t * 1.4) + f.x + f.y + i) % 5;
+        const screen = phase === 0 ? '#27323b' : phase === 1 ? '#40546b' : phase === 2 ? '#51467e' : '#355d63';
         R(px + i * TS + 5, mony, 11, 6, P.black);
-        R(px + i * TS + 6, mony + 1, 9, 4, '#3d4b58');
+        R(px + i * TS + 6, mony + 1, 9, 4, screen);
+        R(px + i * TS + 7, mony + 2, 5, 1, phase === 2 ? P.violetLt : P.cyan);
+        R(px + i * TS + 7, mony + 4, 7, 1, 'rgba(255,255,255,.22)');
       }
       break; }
     case 'exdesk':
       sh(); R(px, py, w, h, P.wood); R(px, py, w, 1, P.woodLt); R(px, py + h - 2, w, 2, P.woodDk);
-      R(px + 4, py + 4, 12, 7, P.black); R(px + 5, py + 5, 10, 5, '#3d4b58');
+      R(px + 4, py + 4, 12, 7, P.black); R(px + 5, py + 5, 10, 5, '#354e61');
+      R(px + 6, py + 6, 7, 1, Math.sin(world.t * 1.8 + f.y) > 0 ? P.cyan : P.violetLt);
+      R(px + 6, py + 8, 5, 1, 'rgba(255,255,255,.25)');
       R(px + 5, py + h - 8, 8, 4, P.white); break;
     case 'ctable':
       sh(); R(px, py, w, h, P.white); R(px, py, w, 1, '#ffffff'); R(px, py + h - 2, w, 2, P.whiteSh);
@@ -1416,11 +1493,27 @@ function drawFurn(f, c) {
       for (let i = 1; i < f.h; i++) R(px, py + i * TS, w, 1, P.whiteSh); break;
     case 'coffee':
       R(px + 3, py + 1, 11, 13, P.black); R(px + 5, py + 4, 7, 5, '#4a3a2c');
-      R(px + 5, py + 3, 7, 1, P.amber); break;
-    case 'fridge': sh(); R(px, py, w, h, P.white); R(px + w / 2, py + 3, 1, 9, P.whiteSh); break;
+      R(px + 5, py + 3, 7, 1, P.amber);
+      mctx.globalAlpha = .32 + Math.sin(world.t * 3) * .10;
+      const steam = Math.floor(world.t * 5) % 7;
+      R(px + 7 + (steam % 2), py - 2 - steam, 1, 3, P.white);
+      R(px + 10 - (steam % 2), py - 5 - ((steam + 3) % 7), 1, 2, P.white);
+      mctx.globalAlpha = 1;
+      break;
+    case 'fridge':
+      sh(); R(px, py, w, h, P.white); R(px + w / 2, py + 3, 1, 9, P.whiteSh);
+      R(px + w / 2 - 3, py + 5, 1, 5, P.paintDk); R(px + w / 2 + 2, py + 5, 1, 5, P.paintDk);
+      break;
     case 'plotter':
       sh(); R(px, py, w, h, '#d8d4cf'); R(px, py, w, 3, '#eceae6');
-      R(px + 2, py + h - 8, w - 4, 4, P.paintDk); R(px + 3, py + 4, 6, 3, P.cyan);
+      R(px + 2, py + h - 8, w - 4, 4, P.paintDk);
+      R(px + 3, py + 4, 6, 3, world.printed ? P.violet : P.cyan);
+      R(px + 11, py + 5, 2, 1, Math.sin(world.t * 5) > 0 ? P.amber : P.paintDk);
+      if (world.printed) {
+        R(px + 5, py + h - 10, w - 10, 7, P.white);
+        R(px + 7, py + h - 8, w - 14, 1, '#93a6b2');
+        R(px + 7, py + h - 6, w - 17, 1, P.violetLt);
+      }
       if (currentObjective() === PRINT_OBJECTIVE) {
         const bob = Math.sin(world.t * 4) * 2 | 0;
         R(px + w / 2 - 2, py - 8 + bob, 4, 4, P.pink);
@@ -1435,7 +1528,12 @@ function drawFurn(f, c) {
       sh(); R(px, py, w, h, P.white); R(px + w - 2, py, 2, h, P.whiteSh);
       for (let i = 0; i < f.h; i++) { R(px, py + i * TS, w, 1, P.whiteSh);
         R(px + 3, py + i * TS + 7, 6, 1, P.paintDk); } break;
-    case 'tv': R(px + 2, py, w - 2, h, P.black); R(px + 4, py + 2, w - 6, h - 4, '#2f3a44'); break;
+    case 'tv': {
+      R(px + 2, py, w - 2, h, P.black); R(px + 4, py + 2, w - 6, h - 4, '#263844');
+      const scan = Math.floor(world.t * 8 + f.y) % Math.max(2, h - 6);
+      R(px + 6, py + 5 + scan, Math.max(2, w - 10), 1, 'rgba(34,224,255,.32)');
+      R(px + 6, py + 5, Math.max(2, (w - 10) * .55), 2, P.violet);
+      break; }
     case 'ptable':
       mctx.globalAlpha = .2; R(px + 2, py + h - 2, w, 3, '#2b2b34'); mctx.globalAlpha = 1;
       R(px + 1, py + 1, w - 2, h - 4, P.black); R(px + 2, py + 2, w - 4, h - 6, '#3a3a44');
@@ -1446,13 +1544,18 @@ function drawFurn(f, c) {
       mctx.fillStyle = P.plant;
       for (let i = 0; i < 7; i++) {
         const a = i / 7 * 6.283 + 0.4;
-        mctx.fillRect(px + 8 + Math.cos(a) * 4 | 0, py + 6 + Math.sin(a) * 4 | 0, 3, 3);
+        const sway = Math.sin(world.t * .9 + f.x + i) * .65;
+        mctx.fillRect(px + 8 + Math.cos(a) * 4 + sway | 0, py + 6 + Math.sin(a) * 4 | 0, 3, 3);
       }
       R(px + 7, py + 3, 3, 4, P.plantDk); break;
   }
 }
 
 // ---------- ACTORS ----------
+function facingNeedsMirror(face) {
+  // The baked profile points right (nose at x=9). Mirror only for left.
+  return face === 'left';
+}
 function drawActor(spr, p, c, moving) {
   const f = moving ? (Math.floor(p.anim) % 2) : 0;
   const img = spr[p.face][f];
@@ -1460,7 +1563,7 @@ function drawActor(spr, p, c, moving) {
   mctx.globalAlpha = .22; mctx.fillStyle = '#2b2b34';
   mctx.beginPath(); mctx.ellipse(Math.round(p.x - c.x), Math.round(p.y - c.y), 5, 2.2, 0, 0, 6.283);
   mctx.fill(); mctx.globalAlpha = 1;
-  if (p.face === 'right') {
+  if (facingNeedsMirror(p.face)) {
     mctx.save(); mctx.translate(x + PW, y); mctx.scale(-1, 1); mctx.drawImage(img, 0, 0); mctx.restore();
   } else mctx.drawImage(img, x, y);
   if (p.signed) { mctx.fillStyle = P.violet; mctx.fillRect(x + 11, y - 4, 3, 3); }
@@ -1468,6 +1571,10 @@ function drawActor(spr, p, c, moving) {
     const bob = Math.sin(world.t * 4) * 2 | 0;
     mctx.fillStyle = P.pink;
     mctx.fillRect(x + 5, y - 8 + bob, 4, 4); mctx.fillRect(x + 6, y - 4 + bob, 2, 2);
+    if (Math.sin(world.t * 6) > 0) {
+      mctx.fillStyle = '#ffffff';
+      mctx.fillRect(x + 3, y - 10 + bob, 2, 1); mctx.fillRect(x + 10, y - 10 + bob, 2, 1);
+    }
   }
 }
 function drawPlayer(c) {
@@ -1477,14 +1584,21 @@ function drawPlayer(c) {
   mctx.globalAlpha = .26; mctx.fillStyle = '#2b2b34';
   mctx.beginPath(); mctx.ellipse(Math.round(player.x - c.x), Math.round(player.y - c.y), 5, 2.2, 0, 0, 6.283);
   mctx.fill(); mctx.globalAlpha = 1;
-  if (player.face === 'right') {
+  if (facingNeedsMirror(player.face)) {
     mctx.save(); mctx.translate(x + PW, y); mctx.scale(-1, 1); mctx.drawImage(img, 0, 0); mctx.restore();
   } else mctx.drawImage(img, x, y);
-  // the rolled drawing set, always under one arm
-  mctx.fillStyle = '#e8e2d4'; mctx.fillRect(x - 1, y + 8, 3, 8);
-  mctx.fillStyle = P.violet; mctx.fillRect(x - 1, y + 11, 3, 1);
+  // Coffee is a temporary visual state, matching the speed boost duration.
+  if (world.boost > 0) {
+    mctx.fillStyle = '#f1ece4'; mctx.fillRect(x - 2, y + 9, 5, 6);
+    mctx.fillStyle = '#6b4a32'; mctx.fillRect(x - 1, y + 10, 3, 2);
+    mctx.fillStyle = P.violet; mctx.fillRect(x - 2, y + 13, 5, 1);
+    mctx.globalAlpha = .42;
+    mctx.fillStyle = '#ffffff';
+    mctx.fillRect(x, y + 6 - (Math.floor(world.t * 5) % 3), 1, 3);
+    mctx.globalAlpha = 1;
+  }
   if (player.hopho > 0) {
-    mctx.fillStyle = P.black;
+    mctx.fillStyle = '#287bd1';
     mctx.fillRect(x + 2, y + 2, 2, 4); mctx.fillRect(x + 10, y + 2, 2, 4);
     mctx.fillRect(x + 3, y, 8, 2);
     if (Math.sin(world.t * 7) > 0) {
@@ -1534,7 +1648,7 @@ function drawHUD() {
     mctx.fillStyle = i < world.coffee ? '#8c6242' : 'rgba(255,255,255,0.5)';
     mctx.fillRect(cx, by + 2, 6, 2);
   }
-  if (world.boost > 0) { text(mctx, 'CAFE +' + Math.ceil(world.boost), 122, by + 3, P.amber); }
+  if (world.boost > 0) { text(mctx, 'CAFÉ +' + Math.ceil(world.boost), 122, by + 3, P.amber); }
 
   // minimap, drawn as a key plan
   if (mini) {
@@ -1613,7 +1727,7 @@ function drawDialogue() {
       if (sel) text(mctx, '>', bx + 6, y, P.violet);
       text(mctx, c.label, bx + 14, y, sel ? P.violet : P.ink);
     });
-    const hint = 'A/D ELEGIR · E CONFIRMAR';
+    const hint = window.innerWidth <= 640 ? 'ARRASTRA ELEGIR · E CONFIRMAR' : 'A/D ELEGIR · E CONFIRMAR';
     text(mctx, hint, bx + bw - tw1(hint) - 6, by + bh - 9, '#a89bd8');
   } else {
     if (d.pages.length > 1) {
@@ -1629,11 +1743,37 @@ function drawDialogue() {
 // ---------- OVERLAYS ----------
 function drawOverlays() {
   if (world.paused) {
-    mctx.fillStyle = 'rgba(43,43,52,0.74)'; mctx.fillRect(0, 0, VW, VH);
+    mctx.fillStyle = 'rgba(43,43,52,0.82)'; mctx.fillRect(0, 0, VW, VH);
     const p1 = 'PAUSA';
-    text(mctx, p1, (VW - tw1(p1) * 3) / 2, 100, '#ffffff', 3);
-    const p2 = 'P PARA CONTINUAR';
-    text(mctx, p2, (VW - tw1(p2)) / 2, 128, '#d9d2ff');
+    text(mctx, p1, (VW - tw1(p1) * 2) / 2, 27, '#ffffff', 2);
+
+    const bx = 52, by = 55, bw = VW - 104, bh = 126;
+    pill(mctx, bx, by, bw, bh, 'rgba(247,245,242,0.97)');
+    const title = 'ESTADO DE ENTREGA';
+    text(mctx, title, (VW - tw1(title)) / 2, by + 10, P.violet);
+
+    const signatures = completedSignatures();
+    const printState = world.printed ? 'LISTA' : world.step < 4 ? 'NO DISPONIBLE' : 'PENDIENTE';
+    const rows = [
+      ['DAILY', dailyComplete() ? 'LISTO' : 'PENDIENTE'],
+      ['FIRMAS', signatures + ' DE 6'],
+      ['IMPRESIÓN', printState],
+    ];
+    rows.forEach((row, i) => {
+      const y = by + 29 + i * 15;
+      text(mctx, row[0], bx + 18, y, P.dim);
+      text(mctx, row[1], bx + bw - 18 - tw1(row[1]), y, row[1] === 'PENDIENTE' || row[1] === 'NO DISPONIBLE' ? P.dim : P.violet);
+    });
+
+    const cur = currentObjective();
+    if (cur) {
+      const label = 'OBJETIVO ACTUAL';
+      text(mctx, label, (VW - tw1(label)) / 2, by + 82, P.violet);
+      const objectiveLines = wrapText(objectiveLabel(cur), bw - 32, 1);
+      objectiveLines.forEach((line, i) => text(mctx, line, (VW - tw1(line)) / 2, by + 96 + i * 9, P.ink));
+    }
+    const p2 = window.innerWidth <= 640 ? 'BOTÓN PAUSA PARA CONTINUAR' : 'P PARA CONTINUAR';
+    text(mctx, p2, (VW - tw1(p2)) / 2, 198, '#d9d2ff');
     return;
   }
   if (world.t < INTRO_LOCK) {
@@ -1646,8 +1786,11 @@ function drawOverlays() {
     text(mctx, t2, (VW - tw1(t2) * 2) / 2, 110, P.ink, 2);
     const t3 = 'DAILY · SEIS FIRMAS · ENTREGA ANTES DE LAS 18:00';
     text(mctx, t3, (VW - tw1(t3)) / 2, 128, P.dim);
-    const t4 = 'WASD MOVER · E HABLAR · ESPACIO AURICULARES · P PAUSA';
+    const t4 = window.innerWidth <= 640
+      ? 'TOCA Y ARRASTRA · E HABLAR · AURICULARES · BOTÓN PAUSA'
+      : 'WASD MOVER · E HABLAR · ESPACIO AURICULARES · P PAUSA';
     text(mctx, t4, (VW - tw1(t4)) / 2, 140, P.dim);
+    text(mctx, 'BUILD ' + BUILD, VW - tw1('BUILD ' + BUILD) - 6, 149, P.dim);
     mctx.globalAlpha = 1;
   }
   if (!world.over) return;
@@ -1673,32 +1816,87 @@ function drawOverlays() {
 
 function drawClientArrival() {
   const t = world.postT;
-  mctx.fillStyle = '#dfe5e8'; mctx.fillRect(0, 0, VW, 112);
-  mctx.fillStyle = '#b9c6cc'; mctx.fillRect(0, 96, VW, 16);
-  mctx.fillStyle = '#efede9'; mctx.fillRect(0, 112, VW, 128);
-  mctx.fillStyle = '#d2cec8'; mctx.fillRect(0, 183, VW, 57);
-  for (let x = 0; x < VW; x += 32) { mctx.fillStyle = '#c4beb8'; mctx.fillRect(x, 207, 24, 1); }
+  // The camera begins slightly close and eases outward, revealing four levels.
+  const zoom = 1.11 - Math.min(1, t / 1.5) * .11;
+  mctx.save();
+  mctx.translate(VW / 2, 145); mctx.scale(zoom, zoom); mctx.translate(-VW / 2, -145);
 
-  // Front elevation: the client crosses the sidewalk and disappears through the glass door.
-  mctx.fillStyle = '#f8f7f4'; mctx.fillRect(86, 44, 236, 139);
-  mctx.fillStyle = P.black; mctx.fillRect(86, 44, 236, 5);
-  mctx.fillStyle = '#93aeb9'; mctx.fillRect(105, 65, 78, 94); mctx.fillRect(226, 65, 75, 94);
-  mctx.fillStyle = P.black;
-  for (const x of [105,144,182,226,263,300]) mctx.fillRect(x, 65, 3, 94);
-  mctx.fillStyle = '#b7cbd2'; mctx.fillRect(185, 74, 39, 109);
-  mctx.fillStyle = P.black; mctx.fillRect(183, 65, 44, 4); mctx.fillRect(183, 65, 3, 118); mctx.fillRect(224, 65, 3, 118);
-  mctx.fillStyle = P.violet; mctx.fillRect(110, 53, 8, 8);
-  text(mctx, 'LUXIA LABS', 123, 54, P.ink);
+  mctx.fillStyle = '#dce7ec'; mctx.fillRect(0, 0, VW, 158);
+  const cloud = (Math.floor(t * 3) % (VW + 80)) - 80;
+  mctx.fillStyle = 'rgba(255,255,255,.56)';
+  mctx.fillRect(cloud, 30, 48, 7); mctx.fillRect(cloud + 11, 25, 23, 6);
+  mctx.fillStyle = '#9fadb7';
+  for (let x = 4; x < VW; x += 29) {
+    const sh = 14 + ((x * 5) % 27);
+    mctx.fillRect(x, 158 - sh, 18, sh);
+    mctx.fillStyle = '#c7d4d9'; mctx.fillRect(x + 4, 153 - sh, 2, 2); mctx.fillRect(x + 11, 146 - sh, 2, 2);
+    mctx.fillStyle = '#9fadb7';
+  }
+  mctx.fillStyle = '#d3cec7'; mctx.fillRect(0, 184, VW, 56);
+  mctx.fillStyle = '#ebe8e3'; mctx.fillRect(0, 158, VW, 26);
+  for (let x = 0; x < VW; x += 28) { mctx.fillStyle = '#c1bbb4'; mctx.fillRect(x, 207, 21, 1); }
 
-  const walk = Math.min(1, t / 4.2), fade = t > 4.2 ? Math.max(0, 1 - (t - 4.2) / .7) : 1;
-  const cx = 24 + (195 - 24) * walk, cy = 186 - Math.sin(walk * Math.PI) * 3;
+  // Luxia Labs tower: three upper office levels plus the ground-floor lobby.
+  const bx = 82, bw = 220;
+  mctx.fillStyle = '#f6f4f1'; mctx.fillRect(bx, -50, bw, 235);
+  mctx.fillStyle = P.black; mctx.fillRect(bx, 0, bw, 4); mctx.fillRect(bx, 181, bw, 4);
+  for (const fy of [-42, 10, 62]) {
+    mctx.fillStyle = '#8faebb'; mctx.fillRect(bx + 13, fy + 8, bw - 26, 35);
+    mctx.fillStyle = P.black;
+    for (let x = bx + 13; x <= bx + bw - 13; x += 32) mctx.fillRect(x, fy + 8, 2, 35);
+    mctx.fillRect(bx, fy + 47, bw, 4);
+    // A few warm offices remain lit behind the blue glass.
+    mctx.globalAlpha = .25; mctx.fillStyle = '#fff0b8';
+    mctx.fillRect(bx + 48 + (fy & 16), fy + 13, 28, 25);
+    mctx.fillRect(bx + 145 - (fy & 16), fy + 13, 25, 25);
+    mctx.globalAlpha = 1;
+  }
+
+  // Transparent lobby with reception desk, seating and an opening glass door.
+  mctx.fillStyle = '#9fb8c2'; mctx.fillRect(bx + 13, 120, bw - 26, 61);
+  mctx.globalAlpha = .36; mctx.fillStyle = '#f4e7ca'; mctx.fillRect(bx + 14, 121, bw - 28, 18); mctx.globalAlpha = 1;
+  mctx.fillStyle = '#c09c68'; mctx.fillRect(231, 157, 50, 15);
+  mctx.fillStyle = '#e4c99e'; mctx.fillRect(231, 157, 50, 3);
+  mctx.fillStyle = '#737b82'; mctx.fillRect(111, 163, 27, 12); mctx.fillRect(143, 163, 27, 12);
+  mctx.fillStyle = P.violet; mctx.fillRect(245, 143, 8, 8);
+  text(mctx, 'LUXIA', 257, 145, P.ink);
+
+  const doorOpen = Math.max(0, Math.min(1, (t - 3.15) / .85));
+  mctx.fillStyle = '#46535a'; mctx.fillRect(174, 126, 38, 59);
+  mctx.globalAlpha = .72; mctx.fillStyle = '#b8cdd4';
+  mctx.fillRect(174 + doorOpen * 23, 126, 38 - doorOpen * 23, 59);
+  mctx.globalAlpha = 1; mctx.fillStyle = P.black;
+  mctx.fillRect(172, 119, 42, 4); mctx.fillRect(172, 119, 3, 66); mctx.fillRect(211, 119, 3, 66);
+  for (let x = bx + 13; x <= bx + bw - 13; x += 32) mctx.fillRect(x, 120, 2, 61);
+
+  for (const px of [63, 311]) {
+    mctx.fillStyle = '#796555'; mctx.fillRect(px, 169, 15, 15);
+    mctx.fillStyle = P.plantDk; mctx.fillRect(px + 6, 153, 3, 17);
+    mctx.fillStyle = P.plant; mctx.fillRect(px + 2, 154, 7, 6); mctx.fillRect(px + 7, 150, 7, 7);
+  }
+
+  const walk = Math.min(1, t / 4.15), fade = t > 4.15 ? Math.max(0, 1 - (t - 4.15) / .75) : 1;
+  const cx = 25 + (190 - 25) * walk, cy = 188 - Math.sin(walk * Math.PI) * 2;
+  const stride = Math.sin(t * 14) > 0 ? 1 : -1;
+  mctx.globalAlpha = fade * .22; mctx.fillStyle = P.ink;
+  mctx.beginPath(); mctx.ellipse(cx, cy + 2, 7, 2, 0, 0, 6.283); mctx.fill();
   mctx.globalAlpha = fade;
-  mctx.fillStyle = '#27324a'; mctx.fillRect(cx - 5, cy - 18, 11, 14);
-  mctx.fillStyle = SKIN.tan; mctx.fillRect(cx - 4, cy - 27, 9, 9);
-  mctx.fillStyle = HAIR.dark; mctx.fillRect(cx - 4, cy - 29, 9, 4);
-  mctx.fillStyle = '#252733'; mctx.fillRect(cx - 5, cy - 4, 4, 8); mctx.fillRect(cx + 2, cy - 4, 4, 8);
-  mctx.fillStyle = '#6f4b32'; mctx.fillRect(cx + 7, cy - 14, 7, 10);
+  mctx.fillStyle = '#27324a'; mctx.fillRect(cx - 4, cy - 12, 8, 9);
+  mctx.fillStyle = SKIN.tan; mctx.fillRect(cx - 3, cy - 18, 6, 6);
+  mctx.fillStyle = HAIR.dark; mctx.fillRect(cx - 3, cy - 20, 6, 3);
+  mctx.fillStyle = '#252733'; mctx.fillRect(cx - 4 + stride, cy - 3, 3, 6); mctx.fillRect(cx + 1 - stride, cy - 3, 3, 6);
+  mctx.fillStyle = '#6f4b32'; mctx.fillRect(cx + 5, cy - 10, 5, 7);
   mctx.globalAlpha = 1;
+
+  if (t > 4.2 && t < 5.4) {
+    const burst = (t - 4.2) * 12;
+    mctx.fillStyle = P.violetLt;
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * 6.283;
+      mctx.fillRect(193 + Math.cos(a) * burst | 0, 153 + Math.sin(a) * burst * .6 | 0, 2, 2);
+    }
+  }
+  mctx.restore();
 
   if (t > 1) {
     const cap = t < 4.8 ? 'EL CLIENTE LLEGÓ' : 'EL CLIENTE ENTRÓ A LA OFICINA';
