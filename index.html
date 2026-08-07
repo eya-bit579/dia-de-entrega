@@ -37,7 +37,7 @@
   @media(min-width:641px){ .touch{display:none} }
 
   .stage{ position:relative; display:inline-block; }
-  #pause-mute{
+  #pause-mute, #pause-cheats{
     display:none; position:absolute; left:50%; top:76%; transform:translate(-50%,-50%);
     z-index:3; min-width:126px; padding:5px 10px;
     font:400 10px ui-monospace,"SF Mono",Menlo,Consolas,monospace;
@@ -45,8 +45,28 @@
     background:rgba(247,245,242,.96); border:1px solid rgba(108,92,231,.55);
     border-bottom-width:3px; border-radius:7px; cursor:pointer;
   }
-  #pause-mute.show{display:block}
-  #pause-mute:active{border-bottom-width:1px; transform:translate(-50%,calc(-50% + 2px))}
+  #pause-cheats{top:86%}
+  #pause-mute.show, #pause-cheats.show{display:block}
+  #pause-mute:active, #pause-cheats:active{border-bottom-width:1px; transform:translate(-50%,calc(-50% + 2px))}
+  #cheat-panel{
+    display:none; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    z-index:5; width:min(300px,calc(100% - 28px)); padding:14px;
+    color:var(--ink); background:rgba(247,245,242,.98);
+    border:1px solid rgba(108,92,231,.65); border-radius:10px;
+    box-shadow:0 14px 34px rgba(43,43,52,.34); text-align:center;
+  }
+  #cheat-panel.show{display:block}
+  #cheat-panel h2{margin:0 0 5px; color:var(--violet); font-size:14px; letter-spacing:.18em}
+  #cheat-panel p{margin:0 0 10px; font-size:9px; line-height:1.45; letter-spacing:.06em}
+  #cheat-panel button{
+    display:block; width:100%; margin:6px 0; padding:7px 8px; cursor:pointer;
+    font:400 10px ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    letter-spacing:.07em; text-transform:uppercase; color:var(--ink);
+    background:#fff; border:1px solid #cbc5bf; border-bottom-width:3px; border-radius:6px;
+  }
+  #cheat-panel button.on{color:#fff; background:var(--violet); border-color:#4f43bd}
+  #cheat-panel button:active{border-bottom-width:1px; transform:translateY(2px)}
+  #cheat-close{margin-top:10px!important; color:var(--violet)!important}
   #start-button{
     display:none; position:absolute; left:50%; top:78%; transform:translate(-50%,-50%);
     z-index:4; min-width:112px; padding:8px 18px;
@@ -115,6 +135,15 @@
 <div class="stage">
   <canvas id="screen" tabindex="0" aria-label="Nivel jugable: la oficina de Luxia Labs vista en planta"></canvas>
   <button id="pause-mute" type="button" aria-label="Silenciar sonido">🔊 Silenciar</button>
+  <button id="pause-cheats" type="button" aria-label="Abrir menú de trucos">✦ Trucos</button>
+  <div id="cheat-panel" role="dialog" aria-modal="true" aria-labelledby="cheat-title" aria-hidden="true">
+    <h2 id="cheat-title">Trucos</h2>
+    <p>Herramientas opcionales para explorar y probar el juego.</p>
+    <button type="button" id="cheat-time" data-cheat="infiniteTime">Tiempo infinito: no</button>
+    <button type="button" id="cheat-coffee" data-cheat="permanentCoffee">Café permanente: no</button>
+
+    <button id="cheat-close" type="button">Cerrar</button>
+  </div>
   <button id="start-button" type="button" aria-label="Comenzar el juego"><span class="play-icon" aria-hidden="true"></span>Jugar</button>
 </div>
 <div id="touchpad" class="touch">
@@ -134,7 +163,7 @@
 </div>
 <div class="bar">
   <span class="t">Luxia Labs · Día de entrega</span>
-  <span>v0.5</span>
+  <span>v0.6</span>
   <span class="sep">|</span>
   <span class="desk"><kbd>WASD</kbd> caminar <b>·</b> <kbd>E</kbd> hablar <b>·</b> <kbd>Espacio</kbd> auriculares <b>·</b> <kbd>P/Esc</kbd> pausa <b>·</b> <kbd>M</kbd> sonido <b>·</b> <kbd>R</kbd> reiniciar</span>
   <span class="touch">toca y arrastra para caminar <b>·</b> E hablar <b>·</b> sonido, auriculares, pausa y reinicio abajo</span>
@@ -150,7 +179,7 @@
 
 const VW = 384, VH = 240, TS = 16;
 const MAPW = 33, MAPH = 44;          // world = 528 x 704
-const BUILD = '0.5';
+const BUILD = '0.6';
 
 // ---------- PALETTE ----------
 // Sampled off the two office photos: warm grey porcelain, white paint,
@@ -274,7 +303,7 @@ function updateAudio(dt) {
   }
   audio.stepT -= dt;
   if (player.moving && !world.dlg && !world.over && !world.paused && audio.stepT <= 0) {
-    sfx('step'); audio.stepT = world.boost > 0 ? .17 : .25;
+    sfx('step'); audio.stepT = movementMultiplier() > 1 ? .17 : .25;
   }
 }
 function updateSoundButton() {
@@ -289,9 +318,47 @@ function updateSoundButton() {
     pauseButton.setAttribute('aria-label', audio.muted ? 'Activar sonido' : 'Silenciar sonido');
   }
 }
+function updateCheatButtons() {
+  if (!document.getElementById) return;
+  const controls = [
+    ['cheat-time', 'Tiempo infinito', 'infiniteTime'],
+    ['cheat-coffee', 'Café permanente', 'permanentCoffee'],
+
+  ];
+  for (const [id, label, key] of controls) {
+    const button = document.getElementById(id);
+    if (!button) continue;
+    const on = !!world.cheats[key];
+    button.textContent = label + ': ' + (on ? 'sí' : 'no');
+    button.classList.toggle('on', on);
+    button.setAttribute('aria-pressed', String(on));
+  }
+}
 function updatePauseAudioButton() {
-  const button = document.getElementById && document.getElementById('pause-mute');
-  if (button) button.classList.toggle('show', !!world.paused);
+  if (!document.getElementById) return;
+  const button = document.getElementById('pause-mute');
+  const cheatButton = document.getElementById('pause-cheats');
+  const panel = document.getElementById('cheat-panel');
+  const showActions = !!world.paused && !world.cheatMenu;
+  if (button) button.classList.toggle('show', showActions);
+  if (cheatButton) cheatButton.classList.toggle('show', showActions);
+  if (panel) {
+    const showPanel = !!world.paused && !!world.cheatMenu;
+    panel.classList.toggle('show', showPanel);
+    panel.setAttribute('aria-hidden', String(!showPanel));
+  }
+  updateCheatButtons();
+}
+function setCheatMenu(open) {
+  world.cheatMenu = !!open && !!world.paused;
+  updatePauseAudioButton();
+}
+function toggleCheat(key) {
+  if (!(key in world.cheats)) return;
+  world.cheats[key] = !world.cheats[key];
+  if (key === 'permanentCoffee' && world.cheats[key]) world.boost = 0;
+  updateCheatButtons();
+  sfx('select');
 }
 function updateStartButton() {
   const button = document.getElementById && document.getElementById('start-button');
@@ -447,7 +514,7 @@ const PEOPLE = [
     tx:10, ty:19, kind:'roam', route:[[7,28],[7,40],[23,40],[23,28]], speed:26,
     spec:{ sk:'brown', hs:'bob', hc:'black', fh:'none', gl:0, top:'#b82e8a', bot:'#73205f', sh:'#2d2030', st:'dress', bd:-1, tl:0 },
     lines:['¿Y TU DAILY? LLEVO 20 MINUTOS BUSCÁNDOTE.',
-           '¿YA MODELISTE EL NIVEL 3? HOY DEBES TERMINAR LA DOCUMENTACIÓN.\nSI TIENES ALGÚN IMPEDIMENTO ME AVISAS.',
+           '¿YA MODELASTE EL NIVEL 3? HOY DEBES TERMINAR LA DOCUMENTACIÓN.\nSI TIENES ALGÚN IMPEDIMENTO ME AVISAS.',
            'TUS TAREAS ESTÁN EN MONDAY. AHORA SÍ PUEDES TRABAJAR.'] },
 
   { id:'hector', name:'HÉCTOR MARRERO', role:'SENIOR TECHNICAL ARCHITECT', step:2,
@@ -853,10 +920,11 @@ function bakeTiles() {
 const world = {
   tiles: [], solid: [], mat: [], room: [],
   people: [], props: [], wet: [], motes: [],
-  step: 0, clock: 900, over: 0, hint: '', hintT: 0, fired: [],
+  step: 0, clock: 840, over: 0, hint: '', hintT: 0, fired: [],
   hp: null, coffee: 3, boost: 0, shake: 0, t: 0, talked: {},
   dlg: null, dlgPage: 0, sparks: [],
   paused: false, printed: false, postT: 0, started: false, startFade: 0,
+  cheatMenu: false, cheats: { infiniteTime: false, permanentCoffee: false },
 };
 const player = {
   // Collision box hangs at the feet with clearance top and bottom so it sits
@@ -864,11 +932,15 @@ const player = {
   x: 0, y: 0, hw: 4, top: -5, bot: 1, face: 'down', anim: 0, moving: false,
   hopho: 0, phCharge: 1, slip: 0, vx: 0, vy: 0,
 };
-const CLOCK_END = 1080;        // 18:00
+const CLOCK_START = 840;       // 2:00 PM
+const CLOCK_END = 1020;        // 5:00 PM
 const SEC_PER_MIN = 1.25;
 const SPEED = 74;
 const START_FADE = .55;
 function gameReady() { return world.started && world.startFade >= START_FADE; }
+function coffeeActive() { return world.boost > 0 || world.cheats.permanentCoffee; }
+function movementMultiplier() { return coffeeActive() ? 1.5 : 1; }
+function addGameMinutes(minutes) { if (!world.cheats.infiniteTime) world.clock += minutes; }
 
 function inRect(x, y, r) { return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h; }
 
@@ -942,8 +1014,8 @@ function buildWorld() {
 
   player.x = 18 * TS + 8; player.y = 28 * TS + 12;
   player.face = 'down'; player.hopho = 0; player.phCharge = 1; player.slip = 0;
-  world.step = 0; world.clock = 900; world.over = 0; world.coffee = 3; world.paused = false;
-  world.printed = false; world.postT = 0; world.started = false; world.startFade = 0;
+  world.step = 0; world.clock = CLOCK_START; world.over = 0; world.coffee = 3; world.paused = false;
+  world.printed = false; world.postT = 0; world.started = false; world.startFade = 0; world.cheatMenu = false;
   audio.stepT = 0; audio.postCue = false;
   updatePauseAudioButton();
   updateStartButton();
@@ -1035,7 +1107,7 @@ function openDialogue(who, pages, cost, choices) {
   sfx('talk');
 }
 function closeDialogue() {
-  if (world.dlg && world.dlg.cost) world.clock += world.dlg.cost;
+  if (world.dlg && world.dlg.cost) addGameMinutes(world.dlg.cost);
   world.dlg = null;
 }
 function onLastPage() { return world.dlg && world.dlgPage === world.dlg.pages.length - 1; }
@@ -1090,7 +1162,7 @@ function interact() {
   if (!t) return;
 
   if (t.kind === 'coffee') {
-    if (world.boost > 0) {
+    if (coffeeActive()) {
       sfx('error'); openDialogue('CAFETERA', ['YA TIENES CAFÉ.\nTERMINA ESE ANTES DE SERVIRTE OTRO.'], 0); return;
     }
     if (world.coffee <= 0) { sfx('error'); openDialogue('CAFETERA', ['SE ACABÓ EL CAFÉ.\nCLÁSICO.'], 0); return; }
@@ -1158,7 +1230,7 @@ function startChainStep(p, cost) {
   openDialogue(def.name + ' — ' + def.role, pages, cost);
   world.dlg.onEnd = () => {
     // Dialogue costs count against the deadline. Closing the final conversation
-    // at 18:00 or later is too late, even if it began before the cutoff.
+    // at 5:00 PM or later is too late, even if it began before the cutoff.
     if (world.clock >= CLOCK_END) { world.over = 2; sfx('lose'); updateAudio(0); return; }
     p.signed = true; world.step++;
     if (isLast) { world.over = 3; world.postT = 0; audio.postCue = false; sfx('success'); return; }
@@ -1174,7 +1246,7 @@ function showHint(t, d) { world.hint = t; world.hintT = d; }
 // the same 2 extra game-minutes it costs at the machine (charged only if
 // you say yes -- the base interruption/chat cost is charged separately).
 function aracelisDialogue() {
-  if (world.boost > 0) {
+  if (coffeeActive()) {
     return {
       pages: ['MI HIJO, CUIDADO DONDE PISAS.\nQUE ACABO DE SUAPEAR AHÍ.',
               'YA TIENES CAFÉ. TERMINA ESE PRIMERO.'],
@@ -1185,9 +1257,9 @@ function aracelisDialogue() {
     pages: ['MI HIJO, CUIDADO DONDE PISAS.\nQUE ACABO DE SUAPEAR AHÍ.', '¿QUIERES UN CAFÉ?'],
     choices: [
       { label: 'SÍ, GRACIAS', run: () => {
-          if (world.boost > 0) { openDialogue('ARACELIS DEL ROSARIO', ['TERMINA ESE CAFÉ PRIMERO, MI HIJO.'], 0); return; }
+          if (coffeeActive()) { openDialogue('ARACELIS DEL ROSARIO', ['TERMINA ESE CAFÉ PRIMERO, MI HIJO.'], 0); return; }
           if (world.coffee <= 0) { openDialogue('ARACELIS DEL ROSARIO', ['SE ACABÓ EL CAFÉ. LO SIENTO, MI HIJO.'], 0); return; }
-          world.coffee--; world.boost = 18; world.clock += 2;
+          world.coffee--; world.boost = 18; addGameMinutes(2);
           sfx('coffee');
           openDialogue('ARACELIS DEL ROSARIO', ['TOMA, CON CUIDADO QUE ESTÁ CALIENTE.'], 0);
         } },
@@ -1233,7 +1305,7 @@ function update(dt) {
   }
   if (world.over) return;
   if (!world.dlg && gameReady()) {
-    world.clock += dt / SEC_PER_MIN;
+    addGameMinutes(dt / SEC_PER_MIN);
     if (world.clock >= CLOCK_END) { world.over = 2; sfx('lose'); updateAudio(0); return; }
   }
 
@@ -1244,7 +1316,7 @@ function update(dt) {
   } else {
     player.phCharge = Math.min(1, player.phCharge + dt / 15);
   }
-  world.boost = Math.max(0, world.boost - dt);
+  if (!world.cheats.permanentCoffee) world.boost = Math.max(0, world.boost - dt);
 
   // movement (locked while a dialogue is open, or during the intro banner)
   let ix = 0, iy = 0;
@@ -1255,7 +1327,7 @@ function update(dt) {
     if (keys['s'] || keys['arrowdown']) iy += 1;
     if (ix && iy) { ix *= .7071; iy *= .7071; }
   }
-  const sp = SPEED * (world.boost > 0 ? 1.5 : 1);
+  const sp = SPEED * movementMultiplier();
   const wet = world.wet.some(w => Math.abs(w.x - player.x) < 12 && Math.abs(w.y - player.y) < 12);
   player.slip = wet ? 1 : Math.max(0, player.slip - dt * 2);
   const grip = player.slip > 0 ? 9 : 18;
@@ -1266,7 +1338,7 @@ function update(dt) {
   if (player.moving) {
     if (Math.abs(player.vx) > Math.abs(player.vy)) player.face = player.vx < 0 ? 'left' : 'right';
     else player.face = player.vy < 0 ? 'up' : 'down';
-    player.anim += dt * (world.boost > 0 ? 10 : 7);
+    player.anim += dt * (movementMultiplier() > 1 ? 10 : 7);
   }
   updateAudio(dt);
 
@@ -1378,8 +1450,10 @@ function pill(g, x, y, w, h, col) {
   g.fillRect(x + 1, y, w - 2, h); g.fillRect(x, y + 1, w, h - 2);
 }
 function hhmm(m) {
-  const h = Math.floor(m / 60) % 24, mm = Math.floor(m % 60);
-  return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+  const h24 = Math.floor(m / 60) % 24, mm = Math.floor(m % 60);
+  const suffix = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 || 12;
+  return h12 + ':' + String(mm).padStart(2, '0') + ' ' + suffix;
 }
 
 // ---------- CAMERA ----------
@@ -1781,7 +1855,7 @@ function drawPlayer(c) {
     mctx.save(); mctx.translate(x + PW, y); mctx.scale(-1, 1); mctx.drawImage(img, 0, 0); mctx.restore();
   } else mctx.drawImage(img, x, y);
   // Coffee is a temporary visual state, matching the speed boost duration.
-  if (world.boost > 0) {
+  if (coffeeActive()) {
     mctx.fillStyle = '#f1ece4'; mctx.fillRect(x - 2, y + 9, 5, 6);
     mctx.fillStyle = '#6b4a32'; mctx.fillRect(x - 1, y + 10, 3, 2);
     mctx.fillStyle = P.violet; mctx.fillRect(x - 2, y + 13, 5, 1);
@@ -1810,7 +1884,7 @@ function drawPlayer(c) {
 // ---------- HUD ----------
 function drawHUD() {
   // clock
-  const late = world.clock > CLOCK_END - 20;
+  const late = !world.cheats.infiniteTime && world.clock > CLOCK_END - 20;
   pill(mctx, 6, 6, 60, 17, 'rgba(255,255,255,0.90)');
   text(mctx, hhmm(world.clock), 11, 10, late && Math.sin(world.t * 8) > 0 ? P.red : P.ink, 2);
   pill(mctx, 68, 6, 62, 17, 'rgba(255,255,255,0.72)');
@@ -1841,7 +1915,8 @@ function drawHUD() {
     mctx.fillStyle = i < world.coffee ? '#8c6242' : 'rgba(255,255,255,0.5)';
     mctx.fillRect(cx, by + 2, 6, 2);
   }
-  if (world.boost > 0) { text(mctx, 'CAFÉ +' + Math.ceil(world.boost), 122, by + 3, P.amber); }
+  if (world.cheats.permanentCoffee) text(mctx, 'CAFÉ PERM.', 122, by + 3, P.amber);
+  else if (world.boost > 0) text(mctx, 'CAFÉ +' + Math.ceil(world.boost), 122, by + 3, P.amber);
 
   // minimap, drawn as a key plan
   if (mini) {
@@ -1979,7 +2054,7 @@ function drawOverlays() {
     text(mctx, t2, (VW - tw1(t2) * 2) / 2, 63, P.ink, 2);
 
     pill(mctx, 49, 91, VW - 98, 46, 'rgba(255,255,255,.88)');
-    const t3 = 'DAILY · SEIS FIRMAS · ENTREGA ANTES DE LAS 18:00';
+    const t3 = 'DAILY · SEIS FIRMAS · ENTREGA ANTES DE LAS 5:00 PM';
     text(mctx, t3, (VW - tw1(t3)) / 2, 102, P.ink);
     const deadline = 'TU RELOJ EMPIEZA CUANDO PULSES JUGAR';
     text(mctx, deadline, (VW - tw1(deadline)) / 2, 119, P.violet);
@@ -1998,7 +2073,7 @@ function drawOverlays() {
   mctx.fillRect(0, 0, VW, VH);
   const t1 = win ? 'ENTREGADO' : 'EL CLIENTE SE FUE';
   text(mctx, t1, (VW - tw1(t1) * 3) / 2, 74, win ? P.violet : P.red, 3);
-  const t2 = win ? 'EL CLIENTE ENTRÓ · ENTREGA ' + hhmm(world.clock) : 'ERAN LAS 18:00. NADIE ESPERÓ.';
+  const t2 = win ? 'EL CLIENTE ENTRÓ · ENTREGA ' + hhmm(world.clock) : 'ERAN LAS 5:00 PM. NADIE ESPERÓ.';
   text(mctx, t2, (VW - tw1(t2) * 2) / 2, 102, win ? P.ink : '#ffffff', 2);
   if (win) {
     const spare = Math.max(0, Math.round(CLOCK_END - world.clock));
@@ -2113,7 +2188,9 @@ function doRestart() {
 function doPauseToggle() {
   ensureAudio();
   if (gameReady() && !world.over) {
+    if (world.paused && world.cheatMenu) { setCheatMenu(false); sfx('resume'); return; }
     world.paused = !world.paused;
+    if (!world.paused) world.cheatMenu = false;
     updatePauseAudioButton();
     sfx(world.paused ? 'pause' : 'resume'); updateAudio(0);
   }
@@ -2232,6 +2309,28 @@ function bindStartButton() {
     e.preventDefault(); e.stopPropagation(); beginGame();
   });
 }
+function bindCheatButtons() {
+  const open = document.getElementById('pause-cheats');
+  const close = document.getElementById('cheat-close');
+  if (open) open.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation(); ensureAudio(); setCheatMenu(true); sfx('select');
+  });
+  if (close) close.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation(); setCheatMenu(false); sfx('resume');
+  });
+  const controls = [
+    ['cheat-time', 'infiniteTime'],
+    ['cheat-coffee', 'permanentCoffee'],
+
+  ];
+  for (const [id, key] of controls) {
+    const button = document.getElementById(id);
+    if (!button) continue;
+    button.addEventListener('pointerdown', e => {
+      e.preventDefault(); e.stopPropagation(); ensureAudio(); toggleCheat(key);
+    });
+  }
+}
 
 // ---------- LOOP ----------
 let last = 0, acc = 0;
@@ -2248,7 +2347,7 @@ function frame(now) {
   render();
 }
 function boot() {
-  initGfx(); buildWorld(); bakeMini(); bindTouch(); bindPauseAudioButton(); bindStartButton(); updateSoundButton();
+  initGfx(); buildWorld(); bakeMini(); bindTouch(); bindPauseAudioButton(); bindStartButton(); bindCheatButtons(); updateSoundButton();
   cam.x = Math.max(0, Math.min(MAPW * TS - VW, player.x - VW / 2));
   cam.y = Math.max(0, Math.min(MAPH * TS - VH, player.y - VH / 2));
   requestAnimationFrame(frame);
